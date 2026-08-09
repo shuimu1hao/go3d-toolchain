@@ -2,7 +2,6 @@ package app
 
 import (
 	"math"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -136,10 +135,11 @@ func TestRenderObjTint(t *testing.T) {
 }
 
 func TestSceneFileCleanup(t *testing.T) {
-	// 确保测试不留下 scene.json
+	// 仅验证默认场景路径格式（不删除真实文件！曾用 defaultScenePath() 直接
+	// os.Remove 导致项目根 scene.json 被 go test 反复删除）
 	path := defaultScenePath()
-	if _, err := os.Stat(path); err == nil {
-		os.Remove(path)
+	if path == "" || filepath.Base(path) != "scene.json" {
+		t.Fatalf("默认场景路径应指向 scene.json: %q", path)
 	}
 }
 
@@ -452,5 +452,42 @@ func TestSelectionOrder(t *testing.T) {
 	e.sel = 1
 	if e.selPrev != 0 || e.sel != 1 {
 		t.Fatalf("选择顺序错误")
+	}
+}
+
+
+// TestNewDoc 验证新建文档：清空场景并重置编辑状态。
+func TestNewDoc(t *testing.T) {
+	e := New(320, 200)
+	e.AddObject(TCube)
+	e.AddObject(TSphere)
+	e.sel = 0
+	e.selBone = 2
+	e.fieldFocus = 1
+	e.sketch = &Sketch{}
+	e.newDoc()
+	if len(e.doc.Objs) != 0 {
+		t.Fatalf("新建后场景应为空，仍有 %d 个对象", len(e.doc.Objs))
+	}
+	if e.sel != -1 || e.selBone != -1 || e.fieldFocus != -1 {
+		t.Fatalf("新建后编辑状态应重置: sel=%d selBone=%d fieldFocus=%d", e.sel, e.selBone, e.fieldFocus)
+	}
+	if e.sketch != nil {
+		t.Fatal("新建后草图应清空")
+	}
+}
+
+// TestClearAll 验证一键清除：清空场景全部对象。
+func TestClearAll(t *testing.T) {
+	e := New(320, 200)
+	e.AddObject(TCube)
+	e.AddObject(TCylinder)
+	e.AddObject(TTorus)
+	e.clearAll()
+	if len(e.doc.Objs) != 0 {
+		t.Fatalf("清除后场景应为空，仍有 %d 个对象", len(e.doc.Objs))
+	}
+	if e.sel != -1 {
+		t.Fatal("清除后选择应重置")
 	}
 }

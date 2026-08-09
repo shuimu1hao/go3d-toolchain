@@ -816,17 +816,35 @@ func (e *Editor) deleteSelected() {
 	e.SetMessage("删除特征: %s", name)
 }
 
-// newDoc 新建文档（Ctrl+N）：清空场景。
+// newDoc 新建文档（Ctrl+N / 工具栏[新建]）：清空场景并重置全部编辑状态。
 func (e *Editor) newDoc() {
 	e.doc = NewDocument("零件1")
 	e.sel = -1
+	e.selPrev = -1
 	e.drag = DragNone
 	e.sketch = nil
+	e.sketchTool = 0
 	e.sketchHasPt0 = false
 	e.sketchPt0 = Vec2{}
-	e.fieldFocus = -1
+	e.selBone = -1
 	e.renaming = false
-	e.SetMessage("新建文档（Ctrl+N）— 未保存的更改已丢失")
+	e.renameBuf = ""
+	e.renameIdx = -1
+	e.fieldFocus = -1
+	e.fieldBuf = ""
+	e.fieldBufEdited = false
+	e.saveDialogOpen = false
+	e.saveBuf = ""
+	e.saveBufEdited = false
+	e.orbitDrag = false
+	e.panDrag = false
+	e.SetMessage("新建文档（Ctrl+N / [新建]）— 未保存的更改已丢失")
+}
+
+// clearAll 一键清除：清空场景全部对象并重置编辑状态（等同新建文档）。
+func (e *Editor) clearAll() {
+	e.newDoc()
+	e.SetMessage("已清除全部对象（Ctrl+N / [清除] 亦可）")
 }
 
 // duplicateSelected 复制选中特征。

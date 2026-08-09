@@ -72,10 +72,14 @@ func (e *Editor) drawToolbar(c *engine.Canvas) {
 			x += w + 6
 		}
 	}
-	// 第一行右端：保存/载入
+	// 第一行右端：新建/保存/载入（固定在窗口右缘；工具栏背景全宽，不与左侧按钮重叠）
+	nw := ui.TextW("新建") + 14
 	sw := ui.TextW("保存") + 14
-	drawBtn(c, c.W-PropW-10-sw*2-6, y, sw, 24, "保存", false, func() { e.saveDoc() })
-	drawBtn(c, c.W-PropW-10-sw, y, sw, 24, "载入", false, func() { e.loadDoc() })
+	lw := ui.TextW("载入") + 14
+	xr := c.W - 10 - nw - sw - lw - 12
+	drawBtn(c, xr, y, nw, 24, "新建", false, func() { e.newDoc() })
+	drawBtn(c, xr+nw+6, y, sw, 24, "保存", false, func() { e.saveDoc() })
+	drawBtn(c, xr+nw+sw+12, y, lw, 24, "载入", false, func() { e.loadDoc() })
 
 	// 第二行：编辑模式 + 变换模式 + 视图 + 开关
 	y = 34
@@ -226,9 +230,12 @@ func (e *Editor) drawToolbar(c *engine.Canvas) {
 	w = ui.TextW("取景") + 12
 	drawBtn(c, x, y, w, 24, "取景", false, func() { e.frameSelected() })
 	x += w + 6
-	// 删除/复制/显隐
+	// 删除/清除/复制/显隐
 	w = ui.TextW("删除") + 12
 	drawBtn(c, x, y, w, 24, "删除", false, func() { e.deleteSelected() })
+	x += w + 6
+	w = ui.TextW("清除") + 12
+	drawBtn(c, x, y, w, 24, "清除", false, func() { e.clearAll() })
 	x += w + 6
 	w = ui.TextW("复制") + 12
 	drawBtn(c, x, y, w, 24, "复制", false, func() { e.duplicateSelected() })
@@ -278,14 +285,14 @@ func drawBtn(c *engine.Canvas, x, y, w, h int, label string, active bool, action
 	c.Rect(x, y, w, h, uiColorBorder)
 	ui.DrawText(c, x+8, y+(h-ui.LineH())/2+1, label, uiColorText)
 	// action 由 panelClick 的按钮表驱动（绘制阶段只登记）
-	registerBtn(x, y, w, h, action)
+	registerBtn(x, y, w, h, label, action)
 }
 
 // registerBtn 登记按钮命中区域（全局按钮表，每帧重置）。
 var uiBtns []*panelBtn
 
-func registerBtn(x, y, w, h int, action func()) {
-	uiBtns = append(uiBtns, &panelBtn{x: x, y: y, w: w, h: h, action: action})
+func registerBtn(x, y, w, h int, label string, action func()) {
+	uiBtns = append(uiBtns, &panelBtn{x: x, y: y, w: w, h: h, label: label, action: action})
 }
 
 // panelClick 处理主画布坐标的按钮/面板点击。
