@@ -2,6 +2,8 @@ package app
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"time"
 
 	"go2dgame/engine"
@@ -11,7 +13,7 @@ import (
 
 // 布局常量（SolidWorks 风格：顶工具栏/左模型树/右属性/底状态栏/中视口）。
 const (
-	ToolbarH = 64 // 两行工具栏
+	ToolbarH = 88 // 三行工具栏（SolidWorks 风格：基本体 / 模式 / 全局操作）
 	TreeW    = 240
 	PropW    = 280
 	StatusH  = 32
@@ -48,15 +50,17 @@ type Editor struct {
 	pickPixels         []byte
 
 	sel       int
+	selPrev   int // 上次选中（布尔运算 B 对象；CAD 风格：先选 B 再选 A）
 	mode      TransformMode
 	editMode  EditMode
 	showGrid  bool
 	autoFrame bool
 
 	// 草图状态
-	sketch    *Sketch
-	sketchTool int // 0=折线 1=矩形 2=圆
-	sketchPt0 Vec2
+	sketch     *Sketch
+	sketchTool int  // 0=折线 1=矩形 2=圆
+	sketchPt0  Vec2
+	sketchHasPt0 bool // 矩形/圆第一点是否已设置（独立标志，避免 (0,0) 哨兵失效）
 
 	// 骨骼/动画状态
 	selBone int
@@ -86,6 +90,22 @@ type Editor struct {
 	fieldBuf   string
 	fieldBufEdited bool
 
+	// 保存对话框
+	saveDialogOpen bool
+	saveBuf        string
+	saveBufEdited  bool
+	lastSaveRel    string
+
+	// 吸附（CAD OSNAP 风格：F 开关 + 类型多选）
+	snap          bool
+	snapMask      int // 位标志：SnapGrid|SnapVertex|SnapMid|SnapCenter
+	snapStep      float32
+	snapPanelOpen bool
+
+	// 主题（0=暗色 1=白色）与插件面板
+	theme           int
+	pluginPanelOpen bool
+
 	msg     string
 	msgTime time.Time
 
@@ -102,11 +122,23 @@ func New(w, h int) *Editor {
 		doc:      NewDocument("零件1"),
 		cam:      NewViewportCam(),
 		sel:      -1,
+		selPrev:  -1,
 		mode:     ModeMove,
 		showGrid: true,
+		snap:     true,
+		snapStep: 0.5,
+		snapMask: SnapGrid | SnapVertex,
+		lastSaveRel: "hermes11/go3d-editor/scene.json",
+	}
+	e.theme = themeIndex(loadThemeName())
+	if e.theme == 1 {
+		SetTheme(ThemeLight)
 	}
 	e.layout(w, h)
 	e.rd = render.NewRenderer(e.vpW, e.vpH)
+	if e.theme == 1 {
+		e.rd.ClearColor = themeBgMesh(ThemeLight)
+	}
 	e.vpPixels = make([]byte, e.vpW*e.vpH*4)
 	e.pickPixels = make([]byte, e.vpW*e.vpH*4)
 	e.fpsT = time.Now()
@@ -237,16 +269,63 @@ func (e *Editor) Draw(c *engine.Canvas) {
 	e.drawProps(c)
 	e.drawTimeline(c)
 	e.drawStatus(c)
+	// 浮动面板（模态，最后绘制在最上层）
+	if e.saveDialogOpen {
+		e.drawSaveDialog(c)
+	}
+	if e.snapPanelOpen {
+		e.drawSnapPanel(c)
+	}
+	if e.pluginPanelOpen {
+		e.drawPluginPanel(c)
+	}
 }
 
 // handleKeyboard 处理键盘输入（命令 + 文本编辑）。
 func (e *Editor) handleKeyboard(in *engine.Input) {
-	// 文本编辑优先（重命名/字段输入）
-	if e.renaming || e.fieldFocus >= 0 {
+	// 文本编辑优先（重命名/字段输入/保存对话框）
+	if e.renaming || e.fieldFocus >= 0 || e.saveDialogOpen {
 		e.handleTextInput(in)
 		return
 	}
 	// 快捷键
+	// ---------- 组合键（高级操作：Ctrl/Alt + 字母） ----------
+	// Ctrl+字母：X11 keysym 为控制字符 0x01-0x1a
+	if in.Pressed(engine.KeyChar('\x13')) { // Ctrl+S 保存（询问文件名/位置）
+		e.saveDoc()
+		return
+	}
+	if in.Pressed(engine.KeyChar('\x0f')) { // Ctrl+O 载入
+		e.loadDoc()
+		return
+	}
+	if in.Pressed(engine.KeyChar('\x0e')) { // Ctrl+N 新建文档
+		e.newDoc()
+		return
+	}
+	if in.Pressed(engine.KeyChar('\x05')) { // Ctrl+E 导出选中 OBJ
+		e.exportOBJ()
+		return
+	}
+	if in.Pressed(engine.KeyChar('\x09')) { // Ctrl+I 导入 OBJ
+		e.importOBJ()
+		return
+	}
+	if in.Pressed(engine.KeyChar('\x04')) { // Ctrl+D 复制（与单键 C 等效）
+		e.duplicateSelected()
+		return
+	}
+	if in.Pressed(engine.KeyChar('\x01')) { // Ctrl+A 不处理
+		return
+	}
+	// Alt+字母：keysym 不变，靠 Alt 修饰键区分
+	if in.Down(engine.KeyAltL) || in.Down(engine.KeyAltR) {
+		if in.Pressed(engine.KeyChar('f')) { // Alt+F 吸附类型面板
+			e.saveDialogOpen = false
+			e.pluginPanelOpen = false
+			e.snapPanelOpen = !e.snapPanelOpen
+			return
+		}
 	if in.Pressed(engine.KeyEscape) {
 		e.sel = -1
 		e.drag = DragNone
@@ -309,21 +388,42 @@ func (e *Editor) handleKeyboard(in *engine.Input) {
 		}
 		return
 	}
-	if in.Pressed(engine.KeyChar('f')) || in.Pressed(engine.KeyChar('F')) {
+	if in.Pressed(engine.KeyChar('F')) { // Shift+F 取景（F 已用于吸附开关）
 		e.frameSelected()
 		return
 	}
-	// 保存/载入：Ctrl+S / Ctrl+O（X11 组合键 keysym 为控制字符）
-	if in.Pressed(engine.KeyChar('\x13')) { // Ctrl+S
-		e.saveDoc()
-		return
-	}
-	if in.Pressed(engine.KeyChar('\x0f')) { // Ctrl+O
-		e.loadDoc()
-		return
-	}
-	if in.Pressed(engine.KeyChar('\x01')) { // Ctrl+A 不处理
-		return
+		if in.Pressed(engine.KeyChar('t')) { // Alt+T 主题切换
+			e.toggleTheme()
+			return
+		}
+		if in.Pressed(engine.KeyChar('b')) { // Alt+B 添加骨骼
+			e.boneAdd()
+			return
+		}
+		if in.Pressed(engine.KeyChar('w')) { // Alt+W 绑定权重
+			e.boneBind()
+			return
+		}
+		if in.Pressed(engine.KeyChar('k')) { // Alt+K 添加关键帧
+			e.animAddKey()
+			return
+		}
+		if in.Pressed(engine.KeyChar('x')) { // Alt+X 清除草图
+			e.sketchClear()
+			return
+		}
+		if in.Pressed(engine.KeyChar('1')) { // Alt+1 草图平面：前视
+			e.sketchSetPlane(PlaneXY)
+			return
+		}
+		if in.Pressed(engine.KeyChar('2')) { // Alt+2 草图平面：顶视
+			e.sketchSetPlane(PlaneXZ)
+			return
+		}
+		if in.Pressed(engine.KeyChar('3')) { // Alt+3 草图平面：右视
+			e.sketchSetPlane(PlaneYZ)
+			return
+		}
 	}
 	if in.Pressed(engine.KeyHelp) {
 		e.showHelp()
@@ -331,6 +431,21 @@ func (e *Editor) handleKeyboard(in *engine.Input) {
 	}
 	if in.Pressed(engine.KeyChar(' ')) {
 		e.showGrid = !e.showGrid
+		return
+	}
+	// F 键：吸附开关（CAD OSNAP 风格）
+	if in.Pressed(engine.KeyChar('f')) {
+		e.snap = !e.snap
+		if e.snap {
+			e.SetMessage("吸附: 开（类型见 类型 面板）")
+		} else {
+			e.SetMessage("吸附: 关 [F]")
+		}
+		return
+	}
+	// T 键：切换主题（暗色/白色）
+	if in.Pressed(engine.KeyChar('t')) || in.Pressed(engine.KeyChar('T')) {
+		e.toggleTheme()
 		return
 	}
 	// Tab 切换编辑模式（建模→草图→骨骼→动画）
@@ -378,16 +493,29 @@ func (e *Editor) handleKeyboard(in *engine.Input) {
 	}
 }
 
-// showHelp 显示帮助消息。
+// showHelp 打开帮助文档：新终端会话（xfce4-terminal），分模块详细说明。
 func (e *Editor) showHelp() {
-	e.SetMessage("帮助: 中键旋转视图 右键平移 滚轮缩放 左键选择/拖拽Gizmo G/R/S模式 1/2/3/7视图 P正交 空格网格 Del删除 C复制 H显隐 F取景 Ctrl+S保存 Ctrl+O载入")
+	e.SetMessage("打开帮助会话…（F1 / 帮助按钮）")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		e.SetMessage("无法定位 home 目录")
+		return
+	}
+	helpPath := home + "/hermes11/go3d-editor/HELP.txt"
+	// fire-and-forget：不阻塞编辑器
+	cmd := exec.Command("bash", "-c",
+		"DISPLAY=:0 xfce4-terminal --hold --title=go3d-editor帮助 --command='cat "+helpPath+"' >/dev/null 2>&1")
+	if err := cmd.Start(); err != nil {
+		e.SetMessage("打开帮助失败: %v", err)
+	}
 }
 
-// handleTextInput 处理重命名/数值输入。
+// handleTextInput 处理重命名/数值输入/保存对话框输入。
 func (e *Editor) handleTextInput(in *engine.Input) {
 	if in.Pressed(engine.KeyEscape) {
 		e.renaming = false
 		e.fieldFocus = -1
+		e.saveDialogOpen = false
 		return
 	}
 	if in.Pressed(engine.KeyReturn) || in.Pressed(engine.KeyEnter) {
@@ -398,19 +526,30 @@ func (e *Editor) handleTextInput(in *engine.Input) {
 		if len(e.buf()) > 0 {
 			if e.renaming {
 				e.renameBuf = e.renameBuf[:len(e.renameBuf)-1]
+			} else if e.saveDialogOpen {
+				e.saveBuf = e.saveBuf[:len(e.saveBuf)-1]
 			} else {
 				e.fieldBuf = e.fieldBuf[:len(e.fieldBuf)-1]
 			}
 		}
 		return
 	}
-	// 可输入字符：字母数字 负号 小数点
-	inputChars := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._ "
+	// 可输入字符：字母数字 负号 小数点 斜杠（路径分隔符）
+	inputChars := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._/ "
 	for i := 0; i < len(inputChars); i++ {
 		if in.Pressed(engine.KeyChar(inputChars[i])) {
 			if e.renaming {
 				if len(e.renameBuf) < 24 {
 					e.renameBuf += string(inputChars[i])
+				}
+			} else if e.saveDialogOpen {
+				// 首次输入替换预填路径（另存为风格）
+				if !e.saveBufEdited {
+					e.saveBuf = ""
+					e.saveBufEdited = true
+				}
+				if len(e.saveBuf) < 96 {
+					e.saveBuf += string(inputChars[i])
 				}
 			} else {
 				// 首次输入替换预填值（Blender 风格）
@@ -437,6 +576,10 @@ func (e *Editor) buf() string {
 
 // commitTextInput 提交文本输入。
 func (e *Editor) commitTextInput() {
+	if e.saveDialogOpen {
+		e.doSave()
+		return
+	}
 	if e.renaming {
 		if e.renameIdx >= 0 && e.renameIdx < len(e.doc.Objs) && e.renameBuf != "" {
 			e.doc.Objs[e.renameIdx].Name = e.renameBuf
@@ -511,6 +654,20 @@ func parseFloat(s string) float32 {
 
 // handleMouse 处理视口鼠标（选择/gizmo 拖拽）与面板点击。
 func (e *Editor) handleMouse(in *engine.Input) {
+	// 浮动面板模态（保存对话框/吸附设置/插件面板）：只响应面板内按钮
+	if e.saveDialogOpen || e.snapPanelOpen || e.pluginPanelOpen {
+		if in.MouseLeftPressed {
+			switch {
+			case e.saveDialogOpen:
+				e.saveDialogClick(in.MouseX, in.MouseY)
+			case e.snapPanelOpen:
+				e.snapPanelClick(in.MouseX, in.MouseY)
+			case e.pluginPanelOpen:
+				e.pluginPanelClick(in.MouseX, in.MouseY)
+			}
+		}
+		return
+	}
 	// 面板命中优先于视口
 	if in.MouseLeftPressed {
 		// 是否在视口内
@@ -566,6 +723,9 @@ func (e *Editor) viewportLeftDown(mx, my int) {
 	// 拾取
 	idx := e.pickAt(mx, my)
 	if idx >= 0 {
+		if idx != e.sel {
+			e.selPrev = e.sel // 记录上次选中（布尔 B）
+		}
 		e.sel = idx
 		e.renaming = false
 		e.fieldFocus = -1
@@ -635,6 +795,19 @@ func (e *Editor) deleteSelected() {
 	e.sel = -1
 	e.drag = DragNone
 	e.SetMessage("删除特征: %s", name)
+}
+
+// newDoc 新建文档（Ctrl+N）：清空场景。
+func (e *Editor) newDoc() {
+	e.doc = NewDocument("零件1")
+	e.sel = -1
+	e.drag = DragNone
+	e.sketch = nil
+	e.sketchHasPt0 = false
+	e.sketchPt0 = Vec2{}
+	e.fieldFocus = -1
+	e.renaming = false
+	e.SetMessage("新建文档（Ctrl+N）— 未保存的更改已丢失")
 }
 
 // duplicateSelected 复制选中特征。

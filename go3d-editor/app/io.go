@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"go3d/math3d"
 	"go3d/mesh"
@@ -132,6 +134,12 @@ func (e *Editor) Save(path string) error {
 	if err != nil {
 		return err
 	}
+	// 目标目录不存在时自动创建（保存对话框允许自定义路径）
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
 	return os.WriteFile(path, data, 0o644)
 }
 
@@ -219,14 +227,38 @@ func (e *Editor) Load(path string) error {
 	return nil
 }
 
-// saveDoc 保存到默认路径（工具栏按钮/快捷键）。
+// saveDoc 打开保存对话框（询问保存位置和文件名）。
 func (e *Editor) saveDoc() {
-	path := defaultScenePath()
+	if e.lastSaveRel == "" {
+		e.lastSaveRel = "hermes11/go3d-editor/scene.json"
+	}
+	e.saveBuf = e.lastSaveRel
+	e.saveBufEdited = false
+	e.saveDialogOpen = true
+	e.SetMessage("保存文档: 输入文件路径（相对 home）后回车，或点保存按钮")
+}
+
+// doSave 执行保存：saveBuf 为相对 home 或绝对路径。
+func (e *Editor) doSave() {
+	p := strings.TrimSpace(e.saveBuf)
+	if p == "" {
+		e.saveDialogOpen = false
+		e.SetMessage("保存取消：文件名为空")
+		return
+	}
+	path := p
+	if !strings.HasPrefix(p, "/") {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			path = filepath.Join(home, p)
+		}
+	}
 	if err := e.Save(path); err != nil {
 		e.SetMessage("保存失败: %v", err)
 		return
 	}
-	e.SetMessage("已保存: %s", path)
+	e.lastSaveRel = p
+	e.saveDialogOpen = false
+	e.SetMessage("已保存: %s（%d 特征）", path, len(e.doc.Objs))
 }
 
 // loadDoc 从默认路径载入。

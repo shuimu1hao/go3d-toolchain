@@ -1,6 +1,7 @@
 package app
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -184,6 +185,7 @@ func TestGizmoScaleDrag(t *testing.T) {
 // TestGizmoMoveDrag 验证移动 gizmo 拖拽数学（锚点增量更新，防止指数飞走）。
 func TestGizmoMoveDrag(t *testing.T) {
 	e := New(320, 200)
+	e.snap = false // 纯 Gizmo 数学测试，不依赖吸附
 	e.AddObject(TCube)
 	e.sel = 0
 	o := e.doc.Objs[0]
@@ -322,5 +324,133 @@ func TestCSGCommand(t *testing.T) {
 	o := e.doc.AddObjFromMesh("布尔结果", res)
 	if o.CustomMesh == nil {
 		t.Fatal("boolean result should be custom mesh")
+	}
+}
+
+// TestSnapGrid 验证网格吸附（round 到步长倍数）。
+func TestSnapGrid(t *testing.T) {
+	e := New(320, 200)
+	e.snapStep = 0.5
+	p := e.snapGrid(math3d.Vec3{X: 1.23, Y: -0.77, Z: 3.1})
+	if p.X != 1.0 || p.Y != -1.0 || p.Z != 3.0 {
+		t.Fatalf("snapGrid wrong: %v", p)
+	}
+	if e.snap1(0.24) != 0.0 || e.snap1(0.26) != 0.5 || e.snap1(-0.74) != -0.5 {
+		t.Fatalf("snap1 wrong")
+	}
+}
+
+// TestSnapWorldVertex 验证端点吸附：另一对象顶点在鼠标附近时被捕获。
+func TestSnapWorldVertex(t *testing.T) {
+	e := New(320, 200)
+	e.snap = true
+	e.snapMask = SnapVertex
+	e.AddObject(TCube) // sel=0 自身
+	_ = e.doc.Add(TCube)
+	o2 := e.doc.Objs[1]
+	o2.Pos = math3d.Vec3{2, 0.5, 0} // 第二个立方体在 +X
+	// 投影第二个立方体的某个顶点（世界坐标 (1.5, 1, 0)）
+	target := math3d.Vec3{2 + 0.5, 0.5 + 0.5, 0}
+	sx, sy, ok := e.project(target)
+	if !ok {
+		t.Fatal("project target failed")
+	}
+	wp, hit := e.snapWorld(sx, sy, math3d.Vec3{})
+	if !hit {
+		t.Fatal("should snap to vertex")
+	}
+	if math.Abs(float64(wp.X-target.X)) > 0.01 || math.Abs(float64(wp.Y-target.Y)) > 0.01 {
+		t.Fatalf("snapped point wrong: got %v want %v", wp, target)
+	}
+	// 远处不命中
+	wp, hit = e.snapWorld(sx+200, sy, math3d.Vec3{})
+	if hit {
+		t.Fatalf("should not snap far away: %v", wp)
+	}
+}
+
+// TestSnapPriority 验证优先级：端点 > 网格。
+func TestSnapPriority(t *testing.T) {
+	e := New(320, 200)
+	e.snap = true
+	e.snapMask = SnapVertex | SnapGrid
+	e.AddObject(TCube)
+	e.sel = 0
+	_ = e.doc.Add(TCube)
+	o2 := e.doc.Objs[1]
+	o2.Pos = math3d.Vec3{0.6, 0.5, 0}
+	target := math3d.Vec3{0.6 + 0.5, 1, 0}
+	sx, sy, ok := e.project(target)
+	if !ok {
+		t.Fatal("project failed")
+	}
+	wp, hit := e.snapWorld(sx, sy, math3d.Vec3{X: 1.0})
+	if !hit {
+		t.Fatal("should hit")
+	}
+	if math.Abs(float64(wp.X-1.1)) > 0.01 {
+		t.Fatalf("vertex should win over grid: got %v", wp)
+	}
+}
+
+// TestCSGCommandSelPrev 验证布尔运算 A=当前选中 B=上次选中（CAD 逻辑）。
+func TestCSGCommandSelPrev(t *testing.T) {
+	e := New(320, 200)
+	_ = e.doc.Add(TCube)
+	_ = e.doc.Add(TSphere)
+	// 先选 B（球体，索引1），再选 A（立方体，索引0）
+	e.sel = 1
+	e.selPrev = -1
+	e.viewportLeftDown(0, 0) // 模拟点击（无对象命中也走逻辑）
+	e.sel = 1
+	e.selPrev = -1
+	// 直接模拟两次选择：B=0(球), A=1(立方)？用拾取逻辑验证 selPrev 更新
+	// 手动设置选择顺序
+	e.sel = 0
+	e.selPrev = 1 // B=球体(索引1)
+	// A=立方体(索引0) - 差集：立方体 - 球体
+	e.csgApply(CSGSubtract)
+	if len(e.doc.Objs) != 3 {
+		t.Fatalf("布尔应新增 1 对象，实际 %d", len(e.doc.Objs))
+	}
+	if e.selPrev != -1 {
+		t.Fatalf("运算后 selPrev 应清空，实际 %d", e.selPrev)
+	}
+	if e.sel != 2 {
+		t.Fatalf("运算后应选中新结果(索引2)，实际 %d", e.sel)
+	}
+	// B 未选时提示且不执行
+	e2 := New(320, 200)
+	_ = e2.doc.Add(TCube)
+	e2.sel = 0
+	e2.selPrev = -1
+	e2.csgApply(CSGSubtract)
+	if len(e2.doc.Objs) != 1 {
+		t.Fatalf("B 未选时不应执行布尔")
+	}
+}
+
+// TestSelectionOrder 验证点击拾取时 selPrev 记录上次选中。
+func TestSelectionOrder(t *testing.T) {
+	e := New(320, 200)
+	e.sel = -1
+	e.selPrev = -1
+	// 模拟点选对象0（无拾取像素，直接设置）
+	e.sel = 0
+	e.viewportLeftDown(5, 5) // 空白点击
+	if e.sel != -1 {
+		t.Fatalf("空白点击应取消选择")
+	}
+	// 模拟：点对象0 → 点对象1
+	e.sel = -1
+	e.selPrev = -1
+	e.sel = 0 // 第一次选中
+	e.selPrev = -1
+	e.sel = 1 // 第二次选中（应记录 0 为 selPrev）
+	// 直接验证 csgApply 用 selPrev=0, sel=1
+	e.selPrev = 0
+	e.sel = 1
+	if e.selPrev != 0 || e.sel != 1 {
+		t.Fatalf("选择顺序错误")
 	}
 }

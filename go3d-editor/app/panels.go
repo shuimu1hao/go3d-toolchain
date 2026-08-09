@@ -2,6 +2,8 @@ package app
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"go2dgame/engine"
@@ -27,6 +29,7 @@ var uiColorText = engine.Color{R: 220, G: 224, B: 232}
 var uiColorDim = engine.Color{R: 140, G: 148, B: 162}
 var uiColorAccent = engine.Color{R: 90, G: 150, B: 220}
 var uiColorSel = engine.Color{R: 70, G: 110, B: 170}
+var uiColorSel2 = engine.Color{R: 55, G: 78, B: 112}
 var uiColorBtn = engine.Color{R: 66, G: 72, B: 84}
 var uiColorBtnHover = engine.Color{R: 84, G: 92, B: 108}
 
@@ -119,7 +122,9 @@ func (e *Editor) drawToolbar(c *engine.Canvas) {
 		}
 		for _, b := range booleans {
 			w := ui.TextW(b.label) + 12
-			drawBtn(c, x, y, w, 24, b.label, false, func() { e.csgApply(b.op) })
+			// 两个对象都选好（A=当前 B=上次选中）时按钮高亮可点
+			ready := e.sel >= 0 && e.selPrev >= 0 && e.selPrev != e.sel
+			drawBtn(c, x, y, w, 24, b.label, ready, func() { e.csgApply(b.op) })
 			x += w + 6
 		}
 		x += 6
@@ -135,7 +140,7 @@ func (e *Editor) drawToolbar(c *engine.Canvas) {
 		}
 		for _, b := range skTools {
 			w := ui.TextW(b.label) + 12
-			drawBtn(c, x, y, w, 24, b.label, e.sketchTool == b.t, func() { e.sketchTool = b.t; e.sketchPt0 = Vec2{} })
+			drawBtn(c, x, y, w, 24, b.label, e.sketchTool == b.t, func() { e.sketchTool = b.t; e.sketchPt0 = Vec2{}; e.sketchHasPt0 = false })
 			x += w + 6
 		}
 		x += 6
@@ -177,8 +182,89 @@ func (e *Editor) drawToolbar(c *engine.Canvas) {
 		x += ui.TextW("停止") + 18
 		drawBtn(c, x, y, ui.TextW("清动画")+12, 24, "清动画", false, func() { e.animClear() })
 	}
-	// 帮助
-	ui.DrawText(c, x+10, y+5, "F1 帮助  Ctrl+S 保存  Ctrl+O 载入", uiColorDim)
+	// ---------- 第三行：全局操作（SolidWorks 风格，所有模式可见） ----------
+	y = 64
+	x = 10
+	// 视图
+	views := []struct {
+		label string
+		mode  int
+	}{
+		{"顶视", 0}, {"前视", 1}, {"右视", 2}, {"等轴", 3},
+	}
+	for _, b := range views {
+		mode := b.mode
+		w := ui.TextW(b.label) + 12
+		drawBtn(c, x, y, w, 24, b.label, false, func() {
+			e.cam.SetView(mode)
+			names := []string{"顶视", "前视", "右视", "等轴测"}
+			e.SetMessage("视图: %s", names[mode])
+		})
+		x += w + 6
+	}
+	x += 6
+	// 透视/正交
+	projLabel := "透视"
+	if e.cam.Ortho {
+		projLabel = "正交"
+	}
+	w := ui.TextW(projLabel) + 12
+	drawBtn(c, x, y, w, 24, projLabel, e.cam.Ortho, func() {
+		e.cam.Ortho = !e.cam.Ortho
+		if e.cam.Ortho {
+			e.SetMessage("投影: 正交")
+		} else {
+			e.SetMessage("投影: 透视")
+		}
+	})
+	x += w + 6
+	// 网格
+	w = ui.TextW("网格") + 12
+	drawBtn(c, x, y, w, 24, "网格", e.showGrid, func() { e.showGrid = !e.showGrid })
+	x += w + 6
+	// 取景
+	w = ui.TextW("取景") + 12
+	drawBtn(c, x, y, w, 24, "取景", false, func() { e.frameSelected() })
+	x += w + 6
+	// 删除/复制/显隐
+	w = ui.TextW("删除") + 12
+	drawBtn(c, x, y, w, 24, "删除", false, func() { e.deleteSelected() })
+	x += w + 6
+	w = ui.TextW("复制") + 12
+	drawBtn(c, x, y, w, 24, "复制", false, func() { e.duplicateSelected() })
+	x += w + 6
+	w = ui.TextW("显隐") + 12
+	drawBtn(c, x, y, w, 24, "显隐", false, func() { e.toggleVisible() })
+	x += w + 6
+	// 吸附开关/类型
+	snapLabel := "吸附[F]"
+	if !e.snap {
+		snapLabel = "吸附[关]"
+	}
+	w = ui.TextW(snapLabel) + 12
+	drawBtn(c, x, y, w, 24, snapLabel, e.snap, func() { e.snap = !e.snap })
+	x += w + 6
+	w = ui.TextW("类型") + 12
+	drawBtn(c, x, y, w, 24, "类型", false, func() {
+		e.saveDialogOpen = false
+		e.pluginPanelOpen = false
+		e.snapPanelOpen = !e.snapPanelOpen
+	})
+	x += w + 6
+	// 帮助/插件/主题
+	w = ui.TextW("帮助[F1]") + 12
+	drawBtn(c, x, y, w, 24, "帮助[F1]", false, func() { e.showHelp() })
+	x += w + 6
+	w = ui.TextW("插件") + 12
+	drawBtn(c, x, y, w, 24, "插件", false, func() {
+		e.saveDialogOpen = false
+		e.snapPanelOpen = false
+		e.pluginPanelOpen = !e.pluginPanelOpen
+	})
+	x += w + 6
+	themeLabel := "主题:" + themeName(e.theme)
+	w = ui.TextW(themeLabel) + 12
+	drawBtn(c, x, y, w, 24, themeLabel, false, func() { e.toggleTheme() })
 	_ = uiColorBg
 }
 
@@ -249,9 +335,11 @@ func (e *Editor) drawTree(c *engine.Canvas) {
 	y := rootY + 24
 	for i, o := range e.doc.Objs {
 		rowY := y + i*treeRowH
-		// 选中高亮
+		// 选中高亮：A（当前）亮色，B（上次选中/布尔第二对象）弱色
 		if i == e.sel {
 			c.FillRect(2, rowY, TreeW-4, treeRowH, uiColorSel)
+		} else if i == e.selPrev {
+			c.FillRect(2, rowY, TreeW-4, treeRowH, uiColorSel2)
 		}
 		// 可见性开关（小方块）
 		visX := 14
@@ -261,14 +349,16 @@ func (e *Editor) drawTree(c *engine.Canvas) {
 		}
 		c.FillRect(visX, rowY+7, 12, 12, visCol)
 		c.Rect(visX, rowY+7, 12, 12, uiColorBorder)
-		// 类型短名
-		ui.DrawText(c, 34, rowY+7, o.Type.ShortName(), uiColorDim)
+		// 类型图标（SolidWorks 特征树风格）+ 短名
+		iconX := 34
+		drawTypeIcon(c, iconX, rowY+6, o.Type, o.Visible)
+		ui.DrawText(c, iconX+16, rowY+7, o.Type.ShortName(), uiColorDim)
 		// 名称（重命名时显示输入框）
 		name := o.Name
 		if e.renaming && e.renameIdx == i {
 			name = e.renameBuf + "|"
 		}
-		ui.DrawText(c, 34+ui.TextW(o.Type.ShortName())+8, rowY+7, name, uiColorText)
+		ui.DrawText(c, iconX+16+ui.TextW(o.Type.ShortName())+8, rowY+7, name, uiColorText)
 	}
 	// 底部提示
 	if e.editMode == EditBone {
@@ -356,8 +446,14 @@ func (e *Editor) treeClick(x, y int) {
 	// 可见性小方块
 	if x >= 14 && x <= 26 && y >= rootY+idx*treeRowH+7 && y <= rootY+idx*treeRowH+19 {
 		e.doc.Objs[idx].Visible = !e.doc.Objs[idx].Visible
+		if idx != e.sel {
+			e.selPrev = e.sel
+		}
 		e.sel = idx
 		return
+	}
+	if idx != e.sel {
+		e.selPrev = e.sel
 	}
 	e.sel = idx
 	e.fieldFocus = -1
@@ -658,8 +754,221 @@ func (e *Editor) drawStatus(c *engine.Canvas) {
 		msg = "中键拖拽旋转 右键平移 滚轮缩放  F1 帮助"
 	}
 	ui.DrawText(c, 10, y+8, msg, uiColorText)
-	// 右侧：对象数/FPS/坐标
-	right := fmt.Sprintf("特征 %d  FPS %d  (%.1f,%.1f,%.1f)", len(e.doc.Objs), e.fps, e.cam.Target.X, e.cam.Target.Y, e.cam.Target.Z)
+	// 右侧：吸附状态/对象数/FPS/坐标
+	snapTxt := "吸附:关"
+	if e.snap {
+		names := []string{}
+		if e.snapMask&SnapGrid != 0 {
+			names = append(names, "网格")
+		}
+		if e.snapMask&SnapVertex != 0 {
+			names = append(names, "端点")
+		}
+		if e.snapMask&SnapMid != 0 {
+			names = append(names, "中点")
+		}
+		if e.snapMask&SnapCenter != 0 {
+			names = append(names, "圆心")
+		}
+		snapTxt = "吸附:" + strings.Join(names, "+")
+	}
+	right := fmt.Sprintf("%s  特征 %d  FPS %d  (%.1f,%.1f,%.1f)", snapTxt, len(e.doc.Objs), e.fps, e.cam.Target.X, e.cam.Target.Y, e.cam.Target.Z)
 	ui.DrawTextRight(c, c.W-10, y+8, right, uiColorDim)
 	_ = uiColorText
+}
+
+// ---------- 浮动面板：保存对话框 / 吸附设置 ----------
+
+// drawSaveDialog 保存对话框（模态）：询问保存位置和文件名。
+func (e *Editor) drawSaveDialog(c *engine.Canvas) {
+	const w = 580
+	const h = 180
+	x := (e.cW() - w) / 2
+	y := 180
+	c.FillRect(x, y, w, h, uiColorPanel2)
+	c.Rect(x, y, w, h, uiColorAccent)
+	ui.DrawText(c, x+16, y+14, "保存文档", uiColorText)
+	ui.DrawText(c, x+16, y+40, "文件名 / 路径（相对 ~ 目录，绝对路径以 / 开头）：", uiColorDim)
+	// 输入框
+	ix, iy, iw, ih := x+16, y+66, w-32, 28
+	c.FillRect(ix, iy, iw, ih, uiColorBg)
+	c.Rect(ix, iy, iw, ih, uiColorAccent)
+	ui.DrawText(c, ix+8, iy+6, e.saveBuf, uiColorText)
+	// 解析后预览
+	disp := e.saveBuf
+	if disp == "" {
+		disp = "(空)"
+	} else if !strings.HasPrefix(disp, "/") {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			disp = home + "/" + disp
+		}
+	}
+	ui.DrawText(c, x+16, y+104, "保存到: "+disp, uiColorDim)
+	// 按钮
+	bw, bh := 72, 30
+	drawBtn(c, x+w-2*bw-28, y+h-bh-14, bw, bh, "保存", false, func() { e.doSave() })
+	drawBtn(c, x+w-bw-16, y+h-bh-14, bw, bh, "取消", false, func() { e.saveDialogOpen = false })
+	ui.DrawText(c, x+16, y+h-16, "回车=保存  Esc=取消  点击外部=取消", uiColorDim)
+}
+
+// saveDialogClick 保存对话框点击：面板内按钮；点击外部取消。
+func (e *Editor) saveDialogClick(x, y int) {
+	const w = 580
+	const h = 180
+	dx := (e.cW() - w) / 2
+	dy := 180
+	if x < dx || x >= dx+w || y < dy || y >= dy+h {
+		e.saveDialogOpen = false
+		return
+	}
+	for _, b := range uiBtns {
+		if x >= b.x && x < b.x+b.w && y >= b.y && y < b.y+b.h && b.action != nil {
+			b.action()
+			return
+		}
+	}
+}
+
+// drawSnapPanel 吸附设置面板（CAD OSNAP 风格：总开关 + 类型多选）。
+func (e *Editor) drawSnapPanel(c *engine.Canvas) {
+	const w = 320
+	const h = 232
+	x := e.cW() - w - 20
+	y := ToolbarH + 20
+	c.FillRect(x, y, w, h, uiColorPanel2)
+	c.Rect(x, y, w, h, uiColorAccent)
+	ui.DrawText(c, x+14, y+12, "吸附设置 [F]", uiColorText)
+	// 总开关
+	sw := ui.TextW("启用吸附") + 26
+	drawBtn(c, x+14, y+38, sw, 26, "启用吸附", e.snap, func() { e.snap = !e.snap })
+	ui.DrawText(c, x+14+sw+8, y+44, fmt.Sprintf("%v", e.snap), uiColorDim)
+	// 类型多选（CAD OSNAP 复选）
+	types := []struct {
+		label string
+		mask  int
+	}{
+		{"网格 [G] 对齐0.5", SnapGrid},
+		{"端点 [V] 物体顶点", SnapVertex},
+		{"中点 [M] 边中点", SnapMid},
+		{"圆心 [C] 物体中心", SnapCenter},
+	}
+	ty := y + 76
+	for _, t := range types {
+		mask := t.mask
+		w2 := ui.TextW(t.label) + 30
+		drawBtn(c, x+14, ty, w2, 26, t.label, e.snapMask&mask != 0, func() { e.snapMask ^= mask })
+		ty += 34
+	}
+	ui.DrawText(c, x+14, y+h-22, "优先级: 端点>中点>圆心>网格   点击外部关闭", uiColorDim)
+}
+
+// snapPanelClick 吸附面板点击：面板内按钮；点击外部关闭。
+func (e *Editor) snapPanelClick(x, y int) {
+	const w = 320
+	const h = 232
+	px := e.cW() - w - 20
+	py := ToolbarH + 20
+	if x < px || x >= px+w || y < py || y >= py+h {
+		e.snapPanelOpen = false
+		return
+	}
+	for _, b := range uiBtns {
+		if x >= b.x && x < b.x+b.w && y >= b.y && y < b.y+b.h && b.action != nil {
+			b.action()
+			return
+		}
+	}
+}
+
+// ---------- 模型树类型图标（SolidWorks 特征树风格） ----------
+
+// drawTypeIcon 绘制特征树类型小图标。
+func drawTypeIcon(c *engine.Canvas, x, y int, t ObjType, visible bool) {
+	icon := engine.Color{R: 120, G: 190, B: 240}
+	border := uiColorDim
+	if !visible {
+		icon = uiColorBorder
+		border = uiColorBorder
+	}
+	switch t {
+	case TCube:
+		c.FillRect(x, y, 9, 9, icon)
+		c.Rect(x, y, 9, 9, border)
+	case TSphere:
+		c.Circle(x+4, y+4, 5, icon)
+	case TCylinder:
+		c.FillRect(x+2, y, 5, 9, icon)
+		c.Rect(x+2, y, 5, 9, border)
+	case TCone:
+		c.Line(x, y+8, x+8, y+8, icon)
+		c.Line(x, y+8, x+4, y, icon)
+		c.Line(x+4, y, x+8, y+8, icon)
+	case TTorus:
+		c.Circle(x+4, y+4, 5, icon)
+		c.Circle(x+4, y+4, 2, uiColorPanel2)
+	case TPlane:
+		c.Line(x, y+4, x+8, y+4, icon)
+	}
+}
+
+// ---------- 插件面板 ----------
+
+// pluginPanelH 插件面板动态高度。
+func pluginPanelH() int {
+	bodyH := 40
+	for _, p := range Plugins() {
+		bodyH += 22 + 30*len(p.Actions())
+	}
+	if len(Plugins()) == 0 {
+		bodyH += 22
+	}
+	return bodyH + 24
+}
+
+// drawPluginPanel 插件面板：列出已注册插件及动作。
+func (e *Editor) drawPluginPanel(c *engine.Canvas) {
+	const w = 360
+	h := pluginPanelH()
+	x := e.cW() - w - 20
+	y := ToolbarH + 20
+	c.FillRect(x, y, w, h, uiColorPanel2)
+	c.Rect(x, y, w, h, uiColorAccent)
+	ui.DrawText(c, x+14, y+12, "插件（扩展点）", uiColorText)
+	ty := y + 40
+	for _, p := range Plugins() {
+		ui.DrawText(c, x+14, ty, "▸ "+p.Name(), uiColorAccent)
+		ty += 22
+		for _, a := range p.Actions() {
+			act := a.Action
+			label := a.Label
+			w2 := ui.TextW(label) + 26
+			drawBtn(c, x+26, ty, w2, 24, label, false, func() {
+				e.pluginPanelOpen = false
+				act(e)
+			})
+			ty += 30
+		}
+	}
+	if len(Plugins()) == 0 {
+		ui.DrawText(c, x+14, ty, "暂无插件（main.go RegisterPlugin 注册）", uiColorDim)
+	}
+	ui.DrawText(c, x+14, y+h-20, "点击外部关闭", uiColorDim)
+}
+
+// pluginPanelClick 插件面板点击：面板内按钮；点击外部关闭。
+func (e *Editor) pluginPanelClick(x, y int) {
+	const w = 360
+	h := pluginPanelH()
+	px := e.cW() - w - 20
+	py := ToolbarH + 20
+	if x < px || x >= px+w || y < py || y >= py+h {
+		e.pluginPanelOpen = false
+		return
+	}
+	for _, b := range uiBtns {
+		if x >= b.x && x < b.x+b.w && y >= b.y && y < b.y+b.h && b.action != nil {
+			b.action()
+			return
+		}
+	}
 }

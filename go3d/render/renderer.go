@@ -85,24 +85,28 @@ type Renderer struct {
 	zbuf      []float32
 	Light     Light
 	Wireframe bool
+	// ClearColor 清屏背景色（RGB；像素缓冲为 BGR 布局，Clear 时反转）。
+	// 默认深空蓝黑 (18,22,30)，主题切换时由编辑器设置。
+	ClearColor mesh.Color
 }
 
 // NewRenderer 创建渲染器（W,H 为像素缓冲尺寸）。
 func NewRenderer(w, h int) *Renderer {
 	return &Renderer{
-		W:     w,
-		H:     h,
-		zbuf:  make([]float32, w*h),
-		Light: DefaultLight(),
+		W:          w,
+		H:          h,
+		zbuf:       make([]float32, w*h),
+		Light:      DefaultLight(),
+		ClearColor: mesh.Col(18, 22, 30),
 	}
 }
 
-// Clear 清空像素缓冲为背景色（深空蓝黑）。
+// Clear 清空像素缓冲为背景色（默认深空蓝黑，主题可改）。
 func (r *Renderer) Clear(pixels []byte) {
 	for i := 0; i < len(pixels); i += 4 {
-		pixels[i] = 30   // B
-		pixels[i+1] = 22 // G
-		pixels[i+2] = 18 // R
+		pixels[i] = r.ClearColor.B
+		pixels[i+1] = r.ClearColor.G
+		pixels[i+2] = r.ClearColor.R
 		pixels[i+3] = 0
 	}
 	for i := range r.zbuf {

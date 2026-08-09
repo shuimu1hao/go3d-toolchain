@@ -41,6 +41,14 @@ const (
 	DragScaleAll
 )
 
+// 吸附类型位标志（CAD OSNAP 风格，可多选）。
+const (
+	SnapGrid   = 1 << iota // 网格捕捉
+	SnapVertex             // 端点捕捉
+	SnapMid                // 中点捕捉
+	SnapCenter             // 圆心/中心捕捉
+)
+
 // gizmoHit 返回视口内鼠标点击命中的 gizmo 部件（未命中返回 DragNone）。
 // 返回 (mode, 轴索引) 编码为 Drag 常量。
 func (e *Editor) gizmoHit(vx, vy int) int {
@@ -308,6 +316,10 @@ func (e *Editor) updateDrag(mx, my int) {
 			delta := p.Sub(e.dragAnchor)
 			pos := movePos()
 			*pos = pos.Add(axis.MulScalar(delta.Dot(axis)))
+			// CAD 风格吸附：端点/中点/圆心优先，网格兜底
+			if wp, sn := e.snapWorld(fx, fy, *pos); sn {
+				*pos = wp
+			}
 			e.dragAnchor = p // 增量模式：锚点随拖拽更新
 		}
 		if ok && !e.dragStartOK {
@@ -371,4 +383,153 @@ func (e *Editor) updateDrag(mx, my int) {
 			e.dragStartOK = true
 		}
 	}
+}
+
+// ---------- 吸附（CAD OSNAP 风格） ----------
+
+// snapWorld 视口坐标 → 吸附目标世界点。优先级：端点 > 中点 > 圆心 > 网格。
+// gridRef 是网格吸附的参考点（当前移动位置）。
+func (e *Editor) snapWorld(fx, fy float32, gridRef math3d.Vec3) (math3d.Vec3, bool) {
+	if !e.snap {
+		return math3d.Vec3{}, false
+	}
+	if e.snapMask&SnapVertex != 0 {
+		if p, ok := e.snapNearVertex(fx, fy); ok {
+			return p, true
+		}
+	}
+	if e.snapMask&SnapMid != 0 {
+		if p, ok := e.snapNearMid(fx, fy); ok {
+			return p, true
+		}
+	}
+	if e.snapMask&SnapCenter != 0 {
+		if p, ok := e.snapNearCenter(fx, fy); ok {
+			return p, true
+		}
+	}
+	if e.snapMask&SnapGrid != 0 {
+		return e.snapGrid(gridRef), true
+	}
+	return math3d.Vec3{}, false
+}
+
+// snapNearVertex 屏幕距离 <14px 的最近顶点（排除自身对象）。
+func (e *Editor) snapNearVertex(fx, fy float32) (math3d.Vec3, bool) {
+	best := math3d.Vec3{}
+	bestD := float32(14 * 14)
+	found := false
+	for oi, o := range e.doc.Objs {
+		if e.editMode != EditBone && oi == e.sel {
+			continue
+		}
+		if !o.Visible {
+			continue
+		}
+		m := o.RenderMesh()
+		if m == nil {
+			continue
+		}
+		for _, p := range m.Positions {
+			wp := o.TransformPoint(p)
+			sx, sy, ok := e.project(wp)
+			if !ok {
+				continue
+			}
+			d := (fx-sx)*(fx-sx) + (fy-sy)*(fy-sy)
+			if d < bestD {
+				bestD = d
+				best = wp
+				found = true
+			}
+		}
+	}
+	return best, found
+}
+
+// snapNearMid 屏幕距离 <14px 的最近边中点（排除自身对象）。
+func (e *Editor) snapNearMid(fx, fy float32) (math3d.Vec3, bool) {
+	best := math3d.Vec3{}
+	bestD := float32(14 * 14)
+	found := false
+	for oi, o := range e.doc.Objs {
+		if e.editMode != EditBone && oi == e.sel {
+			continue
+		}
+		if !o.Visible {
+			continue
+		}
+		m := o.RenderMesh()
+		if m == nil {
+			continue
+		}
+		for _, f := range m.Faces {
+			pairs := [3][2]int{{f.A, f.B}, {f.B, f.C}, {f.C, f.A}}
+			for _, pair := range pairs {
+				p0 := o.TransformPoint(m.Positions[pair[0]])
+				p1 := o.TransformPoint(m.Positions[pair[1]])
+				mid := p0.Add(p1).MulScalar(0.5)
+				sx, sy, ok := e.project(mid)
+				if !ok {
+					continue
+				}
+				d := (fx-sx)*(fx-sx) + (fy-sy)*(fy-sy)
+				if d < bestD {
+					bestD = d
+					best = mid
+					found = true
+				}
+			}
+		}
+	}
+	return best, found
+}
+
+// snapNearCenter 屏幕距离 <14px 的最近对象中心（物体 Pos，排除自身）。
+func (e *Editor) snapNearCenter(fx, fy float32) (math3d.Vec3, bool) {
+	best := math3d.Vec3{}
+	bestD := float32(14 * 14)
+	found := false
+	for oi, o := range e.doc.Objs {
+		if e.editMode != EditBone && oi == e.sel {
+			continue
+		}
+		if !o.Visible {
+			continue
+		}
+		wp := o.Pos
+		sx, sy, ok := e.project(wp)
+		if !ok {
+			continue
+		}
+		d := (fx-sx)*(fx-sx) + (fy-sy)*(fy-sy)
+		if d < bestD {
+			bestD = d
+			best = wp
+			found = true
+		}
+	}
+	return best, found
+}
+
+// snapGrid 网格吸附（round 到 snapStep 倍数）。
+func (e *Editor) snapGrid(p math3d.Vec3) math3d.Vec3 {
+	s := e.snapStep
+	if s <= 0 {
+		s = 0.5
+	}
+	return math3d.Vec3{
+		X: float32(math.Round(float64(p.X/s))) * s,
+		Y: float32(math.Round(float64(p.Y/s))) * s,
+		Z: float32(math.Round(float64(p.Z/s))) * s,
+	}
+}
+
+// snap1 一维网格吸附（草图 2D 用）。
+func (e *Editor) snap1(v float32) float32 {
+	s := e.snapStep
+	if s <= 0 {
+		s = 0.5
+	}
+	return float32(math.Round(float64(v/s))) * s
 }

@@ -70,10 +70,12 @@ func main() {
 
 	ed := app.New(w, h)
 	ed.SetEngine(eng)
+	// 注册插件（扩展点：未来深入发展在此追加）
+	app.RegisterPlugin(app.StatsPlugin{})
 	if *load != "" {
 		if err := ed.Load(*load); err != nil {
-			fmt.Fprintln(os.Stderr, "load:", err)
-			os.Exit(1)
+			// 加载失败仅警告，不退出（场景文件可能被清理，编辑器照常可用）
+			fmt.Fprintln(os.Stderr, "load warning:", err)
 		}
 	}
 

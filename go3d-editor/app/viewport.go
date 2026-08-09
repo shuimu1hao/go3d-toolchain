@@ -249,12 +249,70 @@ func (e *Editor) drawSketchOverlay(c *engine.Canvas) {
 		}
 	}
 	// 矩形/圆的第二点提示
-	if e.sketchPtSet() {
+	if e.sketchHasPt0 {
 		p0 := e.sketch.LocalToWorld(e.sketchPt0)
 		sx0, sy0, ok0 := e.project(p0)
 		if ok0 {
 			px0, py0, _ := clip(sx0, sy0)
 			c.FillRect(px0-3, py0-3, 7, 7, engine.Color{R: 120, G: 220, B: 120})
+			// 实时预览（CAD 风格）：矩形框 / 圆轮廓跟随鼠标
+			if e.eng != nil && e.eng.Input() != nil {
+				in := e.eng.Input()
+				mx, my := in.MouseX-e.vpX, in.MouseY-e.vpY
+				if mx >= 0 && my >= 0 && mx < e.vpW && my < e.vpH {
+					wp, ok2 := e.unproject(float32(mx), float32(my), math3d.Vec3{0, 0, 0}, e.sketch.Normal())
+					if ok2 {
+						cur := e.sketch.WorldToLocal(wp)
+						preview := engine.Color{R: 255, G: 160, B: 90}
+						switch e.sketchTool {
+						case 1: // 矩形预览
+							pr := RectSketch(e.sketchPt0.U, e.sketchPt0.V, cur.U, cur.V)
+							drawSketchPoly(c, e, clip, pr, preview)
+						case 2: // 圆预览（半径=圆心到鼠标）
+							dx := cur.U - e.sketchPt0.U
+							dy := cur.V - e.sketchPt0.V
+							r := float32(mathSqrt(float64(dx*dx + dy*dy)))
+							pr := CircleSketch(e.sketchPt0.U, e.sketchPt0.V, r, 48)
+							drawSketchPoly(c, e, clip, pr, preview)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// drawSketchPoly 投影绘制草图多边形轮廓（预览用）。
+func drawSketchPoly(c *engine.Canvas, e *Editor, clip func(float32, float32) (int, int, bool), pts []Vec2, col engine.Color) {
+	if len(pts) < 2 {
+		return
+	}
+	var prevX, prevY int
+	havePrev := false
+	for _, p := range pts {
+		w := e.sketch.LocalToWorld(p)
+		sx, sy, ok := e.project(w)
+		if !ok {
+			havePrev = false
+			continue
+		}
+		px, py, ok2 := clip(sx, sy)
+		if ok2 {
+			if havePrev {
+				c.Line(prevX, prevY, px, py, col)
+			}
+			prevX, prevY = px, py
+			havePrev = true
+		}
+	}
+	if havePrev && len(pts) >= 3 {
+		w0 := e.sketch.LocalToWorld(pts[0])
+		sx0, sy0, ok0 := e.project(w0)
+		if ok0 {
+			px0, py0, ok3 := clip(sx0, sy0)
+			if ok3 {
+				c.Line(prevX, prevY, px0, py0, col)
+			}
 		}
 	}
 }

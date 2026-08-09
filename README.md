@@ -24,7 +24,8 @@
 |---|---|---|
 | `go2dgame` | 基础层：X11 窗口、输入、2D 画布（纯 Go，xgb 客户端） | `cd go2dgame && ./build.sh` |
 | `go3d` | 3D 软渲染引擎：math3d / mesh / render（透视校正 z-buffer） | `cd go3d && ./build.sh` |
-| `go3d-editor` | 3D 建模编辑器：基本体/草图拉伸/布尔/骨骼动画，OBJ/STL/GLB | `cd go3d-editor && ./build.sh` |
+| `go3d-editor` | 3D 建模编辑器：基本体/草图拉伸/布尔/骨骼动画，OBJ/STL/GLB；
+   v3：保存对话框、CAD 吸附、主题切换、插件扩展、帮助会话、组合键 | `cd go3d-editor && ./build.sh` |
 | `go3d-level-editor` | 关卡编辑器：建模产出 → 场景搭建/贴图素材/按键/运行 | `cd go3d-level-editor && ./build.sh` |
 | `go3d-demo-game` | 纯代码 3D 小游戏示例（WASD 收集金币） | `cd go3d-demo-game && go build -o bin/... .` |
 
@@ -70,3 +71,17 @@ go2dgame ── (纯 stdlib + xgb X11)
 ## 协议
 
 MIT License（见 LICENSE）
+
+## 更新记录
+
+### 2026-08-10 v3（go3d-editor 工程能力升级）
+- 保存对话框：Ctrl+S 询问文件名/路径（相对 home 或绝对路径），目录自动创建
+- 草图画圆/矩形实时预览；修复圆心在原点时第一点哨兵失效 bug
+- 吸附（CAD OSNAP 风格）：F 开关 + 类型面板多选（网格/端点/中点/圆心），草图点对齐网格
+- 帮助系统：F1/按钮打开新终端会话，分模块详细说明（HELP.txt）
+- 主题切换：暗色/白色（T 键/按钮），暗底白字/白底黑字，持久化到 config.json
+- 插件扩展点：app.Plugin 接口 + 插件面板，内置统计示例
+- UI 全覆盖：三行工具栏（SolidWorks 风格），高级操作快捷键改为 Ctrl/Alt 组合键
+- 布尔运算修复：CAD 选择逻辑（先选 B 再选 A，模型树双高亮）
+- go3d 引擎：Renderer.ClearColor 支持主题清屏色
+- go2dgame：新增 KeyAltL/KeyAltR 修饰键支持（组合键基础）

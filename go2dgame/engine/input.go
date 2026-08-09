@@ -18,6 +18,8 @@ const (
 	KeyShiftR  = xproto.Keysym(0xffe2)
 	KeyCtrlL   = xproto.Keysym(0xffe3)
 	KeyCtrlR   = xproto.Keysym(0xffe4)
+	KeyAltL    = xproto.Keysym(0xffe9) // Alt_L
+	KeyAltR    = xproto.Keysym(0xffea) // Alt_R
 	KeyReturn  = xproto.Keysym(0xff8d) // 数字小键盘回车
 	KeyDelete  = xproto.Keysym(0xffff) // Delete
 	KeyHelp    = xproto.Keysym(0xffbe) // F1

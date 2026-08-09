@@ -22,13 +22,19 @@ func (e *Editor) sketchClick(mx, my int) {
 		return
 	}
 	p := e.sketch.WorldToLocal(wp)
+	// 网格吸附（CAD 风格：草图点对齐网格）
+	if e.snap && e.snapMask&SnapGrid != 0 {
+		p.U = e.snap1(p.U)
+		p.V = e.snap1(p.V)
+	}
 	switch e.sketchTool {
 	case 0: // 折线
 		e.sketch.AddPoint(p.U, p.V)
 		e.SetMessage("草图点 (%g, %g)  Enter 闭合", p.U, p.V)
 	case 1: // 矩形
-		if !e.sketchPtSet() {
+		if !e.sketchHasPt0 {
 			e.sketchPt0 = p
+			e.sketchHasPt0 = true
 			e.SetMessage("矩形第一角 (%g, %g)", p.U, p.V)
 			return
 		}
@@ -36,10 +42,12 @@ func (e *Editor) sketchClick(mx, my int) {
 		e.sketch.Points = append(e.sketch.Points, pts...)
 		e.sketch.Closed = true
 		e.sketchPt0 = Vec2{}
+		e.sketchHasPt0 = false
 		e.SetMessage("矩形完成，点击 拉伸 生成实体")
 	case 2: // 圆
-		if !e.sketchPtSet() {
+		if !e.sketchHasPt0 {
 			e.sketchPt0 = p
+			e.sketchHasPt0 = true
 			e.SetMessage("圆心 (%g, %g)，再点半径", p.U, p.V)
 			return
 		}
@@ -50,12 +58,13 @@ func (e *Editor) sketchClick(mx, my int) {
 		e.sketch.Points = append(e.sketch.Points, pts...)
 		e.sketch.Closed = true
 		e.sketchPt0 = Vec2{}
+		e.sketchHasPt0 = false
 		e.SetMessage("圆完成，点击 拉伸 生成实体")
 	}
 }
 
 func (e *Editor) sketchPtSet() bool {
-	return e.sketchPt0.U != 0 || e.sketchPt0.V != 0
+	return e.sketchHasPt0
 }
 
 // sketchClose 闭合草图（首尾相连）。
@@ -91,6 +100,7 @@ func (e *Editor) sketchSetPlane(p SketchPlane) {
 		e.sketch.Plane = p
 	}
 	e.sketchPt0 = Vec2{}
+	e.sketchHasPt0 = false
 	names := map[SketchPlane]string{PlaneXY: "前视 XY", PlaneXZ: "顶视 XZ", PlaneYZ: "右视 YZ"}
 	e.SetMessage("草图平面: %s", names[p])
 }
@@ -100,6 +110,7 @@ func (e *Editor) sketchClear() {
 	if e.sketch != nil {
 		e.sketch.Clear()
 		e.sketchPt0 = Vec2{}
+		e.sketchHasPt0 = false
 	}
 	e.SetMessage("草图已清空")
 }
@@ -331,23 +342,18 @@ func (e *Editor) animClear() {
 // mathSqrt 浮点开方。
 func mathSqrt(x float64) float64 { return math.Sqrt(x) }
 
-// csgApply 对选中对象（A）和上一个选中（B）执行布尔运算。
+// csgApply 布尔运算：A = 当前选中，B = 上次选中（CAD 风格：先选 B 再选 A）。
 func (e *Editor) csgApply(op CSGOp) {
 	a := e.selObj()
-	if a == nil || len(e.doc.Objs) < 2 {
-		e.SetMessage("布尔运算需要选中两个对象")
+	if a == nil {
+		e.SetMessage("布尔运算：先选 B，再选 A（A=当前选中对象）")
 		return
 	}
-	// 找 B：选中列表里的另一个（简单：A 的前一个对象）
-	bi := e.sel - 1
-	if bi < 0 {
-		bi = e.sel + 1
-	}
-	if bi < 0 || bi >= len(e.doc.Objs) || bi == e.sel {
-		e.SetMessage("需要第二个对象")
+	if e.selPrev < 0 || e.selPrev >= len(e.doc.Objs) || e.selPrev == e.sel {
+		e.SetMessage("布尔运算需要两个对象：先点选 B，再点选 A（当前）")
 		return
 	}
-	b := e.doc.Objs[bi]
+	b := e.doc.Objs[e.selPrev]
 	ma := a.RenderMesh()
 	mb := b.RenderMesh()
 	res := CSGBoolean(ma, mb, op, a.Color, b.Color)
@@ -358,7 +364,8 @@ func (e *Editor) csgApply(op CSGOp) {
 	names := map[CSGOp]string{CSGUnion: "并集", CSGSubtract: "差集", CSGIntersect: "交集"}
 	o := e.doc.AddObjFromMesh(names[op]+"_"+a.Name, res)
 	e.sel = len(e.doc.Objs) - 1
-	e.SetMessage("%s 完成: %s（%d 面）", names[op], o.Name, len(res.Faces))
+	e.selPrev = -1 // 运算完成，清空 B 防止误连
+	e.SetMessage("%s 完成: A=%s B=%s → %s（%d 面）", names[op], a.Name, b.Name, o.Name, len(res.Faces))
 }
 
 // importOBJ 从默认目录导入 OBJ。

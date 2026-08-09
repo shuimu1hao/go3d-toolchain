@@ -128,6 +128,21 @@ func (o *Object) RenderMesh() *mesh.Mesh {
 	return o.Type.NewMesh()
 }
 
+// ScaleVal 返回有效缩放（0 按 1 处理，与渲染器一致）。
+func (o *Object) ScaleVal() float32 {
+	if o.Scale == 0 {
+		return 1
+	}
+	return o.Scale
+}
+
+// TransformPoint 把网格局部坐标变换到世界坐标（与渲染器模型矩阵一致）。
+func (o *Object) TransformPoint(p math3d.Vec3) math3d.Vec3 {
+	m := math3d.Mul(math3d.Mul(math3d.Mul(math3d.Mul(math3d.Translate(o.Pos.X, o.Pos.Y, o.Pos.Z),
+		math3d.RotateZ(o.RotZ)), math3d.RotateY(o.RotY)), math3d.RotateX(o.RotX)), math3d.Scale(o.ScaleVal()))
+	return m.Transform(p)
+}
+
 // AddObjFromMesh 添加自定义网格对象（草图拉伸/CSG/OBJ 结果）。
 func (d *Document) AddObjFromMesh(name string, m *mesh.Mesh) *Object {
 	o := &Object{
