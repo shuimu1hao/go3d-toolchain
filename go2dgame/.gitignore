@@ -1,0 +1,30 @@
+# 构建产物
+bin/
+*.exe
+*.out
+
+# Go
+*.test
+*.prof
+
+# Python
+__pycache__/
+*.pyc
+*.log
+
+# 临时/个人
+scene.json
+level.json
+model.obj
+model.stl
+model.glb
+usage.json
+task_queue.jsonl
+*.zip
+# 编译产物（根目录）
+lipics
+jianghu-rpg
+jianghu
+xiuxian
+# 系统字体（从手机拷，体积大不入库）
+*.ttc

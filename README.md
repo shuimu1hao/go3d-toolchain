@@ -1,0 +1,72 @@
+# go3d-toolchain — 纯 Go 3D 游戏工具链
+
+从零实现的**纯 Go、零 cgo、无第三方图形依赖**的 3D 游戏开发工具链，
+全程在 Android / Termux（X11 软渲染）上开发与验证。
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     go3d 游戏工具链                           │
+│                                                             │
+│  go3d (3D 引擎) ──→ go3d-editor ──→ go3d-level-editor       │
+│   soft-render 3D     建模编辑器      关卡编辑器               │
+│  math3d/mesh/render  SolidWorks 风  场景/素材/按键/运行       │
+│                      草绘/布尔/骨骼                          │
+│                                                             │
+│  go2dgame (基础层) ── X11 窗口/输入/画布                     │
+│       ↑                                                    │
+│  go3d-demo-game (纯代码游戏示例，证明引擎可直接写游戏)        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## 模块一览
+
+| 模块 | 说明 | 构建 |
+|---|---|---|
+| `go2dgame` | 基础层：X11 窗口、输入、2D 画布（纯 Go，xgb 客户端） | `cd go2dgame && ./build.sh` |
+| `go3d` | 3D 软渲染引擎：math3d / mesh / render（透视校正 z-buffer） | `cd go3d && ./build.sh` |
+| `go3d-editor` | 3D 建模编辑器：基本体/草图拉伸/布尔/骨骼动画，OBJ/STL/GLB | `cd go3d-editor && ./build.sh` |
+| `go3d-level-editor` | 关卡编辑器：建模产出 → 场景搭建/贴图素材/按键/运行 | `cd go3d-level-editor && ./build.sh` |
+| `go3d-demo-game` | 纯代码 3D 小游戏示例（WASD 收集金币） | `cd go3d-demo-game && go build -o bin/... .` |
+
+## 快速开始
+
+```bash
+# 各模块相互依赖，使用 go.mod replace 指向仓库内子目录（monorepo 内天然生效）
+cd go3d && go test ./... && ./build.sh          # 引擎 + 测试
+cd ../go3d-editor && go test ./... && ./build.sh # 建模编辑器
+cd ../go3d-level-editor && ./build.sh            # 关卡编辑器
+cd ../go3d-demo-game && ./build.sh               # 游戏示例
+```
+
+编辑器启动（需要 X11 环境，如 Termux:X11 + XFCE）：
+
+```bash
+cd go3d-editor && ./bin/go3d-editor              # 建模编辑器
+cd go3d-level-editor && ./bin/go3d-level-editor  # 关卡编辑器
+```
+
+## 依赖关系
+
+```
+go3d-demo-game ─┬─ go2dgame
+                └─ go3d
+go3d-level-editor ─┬─ go3d-editor (app 复用)
+                   └─ go3d
+go3d-editor ── go3d
+go3d ── (纯 stdlib + golang.org/x/image 字体)
+go2dgame ── (纯 stdlib + xgb X11)
+```
+
+> 所有 `replace` 均为仓库内相对路径（`../go3d` 等），在 monorepo 内克隆即可直接构建，
+> 无外部依赖、无 cgo。
+
+## 开发验证环境
+
+- 设备：小米手机（MIUI / Android 13）
+- 环境：Termux + termux-x11 + XFCE，`DISPLAY=:0` 软渲染
+- 自动化测试：xdotool 模拟点击/按键 + scrot 截图 + PIL 颜色分析
+- 各模块均有单元测试（算法层：数学/网格/CSG/骨骼/GLTF 解析等）
+
+## 协议
+
+MIT License（见 LICENSE）
