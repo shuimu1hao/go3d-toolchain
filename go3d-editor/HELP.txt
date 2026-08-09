@@ -67,7 +67,7 @@ Tab 在四个编辑模式间循环：建模 → 草图 → 骨骼 → 动画
 ----------------------------------------------------------------
  Ctrl+S 或点击 [保存]：
    - 弹出保存对话框，输入 文件名/路径（相对 home 目录）
-     例：hermes11/go3d-editor/scene.json
+     例：hermes11/go3d-toolchain/go3d-editor/scene.json
      也支持绝对路径（以 / 开头）：/data/data/com.termux/files/home/xxx.json
    - 回车或点 [保存] 执行；Esc 或点外部取消
    - 对话框显示解析后的绝对路径预览
@@ -145,6 +145,6 @@ Tab 在四个编辑模式间循环：建模 → 草图 → 骨骼 → 动画
 
 ================================================================
  主题配置：~/.config/go3d-editor/config.json（theme 字段）
- 开发/构建：bash ~/hermes11/go3d-editor/build.sh
+ 开发/构建：bash ~/hermes11/go3d-toolchain/go3d-editor/build.sh
  再看窗口：F1 或工具栏 [帮助] 按钮
 ================================================================

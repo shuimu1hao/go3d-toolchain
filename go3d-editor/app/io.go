@@ -230,7 +230,7 @@ func (e *Editor) Load(path string) error {
 // saveDoc 打开保存对话框（询问保存位置和文件名）。
 func (e *Editor) saveDoc() {
 	if e.lastSaveRel == "" {
-		e.lastSaveRel = "hermes11/go3d-editor/scene.json"
+		e.lastSaveRel = "hermes11/go3d-toolchain/go3d-editor/scene.json"
 	}
 	e.saveBuf = e.lastSaveRel
 	e.saveBufEdited = false
@@ -277,5 +277,5 @@ func defaultScenePath() string {
 	if err != nil {
 		return "scene.json"
 	}
-	return fmt.Sprintf("%s/hermes11/go3d-editor/scene.json", home)
+	return fmt.Sprintf("%s/hermes11/go3d-toolchain/go3d-editor/scene.json", home)
 }

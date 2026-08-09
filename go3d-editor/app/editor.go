@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"go2dgame/engine"
@@ -501,7 +502,25 @@ func (e *Editor) showHelp() {
 		e.SetMessage("无法定位 home 目录")
 		return
 	}
-	helpPath := home + "/hermes11/go3d-editor/HELP.txt"
+	// 帮助文件路径：优先从可执行文件位置推导（<项目根>/HELP.txt，项目可能被归档/移动），
+	// 兜底用经典归档路径。
+	helpPath := ""
+	if exe, err := os.Executable(); err == nil {
+		cand := filepath.Join(filepath.Dir(filepath.Dir(exe)), "HELP.txt")
+		if _, err := os.Stat(cand); err == nil {
+			helpPath = cand
+		}
+	}
+	if helpPath == "" {
+		cand := home + "/hermes11/go3d-toolchain/go3d-editor/HELP.txt"
+		if _, err := os.Stat(cand); err == nil {
+			helpPath = cand
+		}
+	}
+	if helpPath == "" {
+		e.SetMessage("帮助文件不存在")
+		return
+	}
 	// fire-and-forget：不阻塞编辑器
 	cmd := exec.Command("bash", "-c",
 		"DISPLAY=:0 xfce4-terminal --hold --title=go3d-editor帮助 --command='cat "+helpPath+"' >/dev/null 2>&1")

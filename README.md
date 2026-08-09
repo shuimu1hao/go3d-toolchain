@@ -85,3 +85,5 @@ MIT License（见 LICENSE）
 - 布尔运算修复：CAD 选择逻辑（先选 B 再选 A，模型树双高亮）
 - go3d 引擎：Renderer.ClearColor 支持主题清屏色
 - go2dgame：新增 KeyAltL/KeyAltR 修饰键支持（组合键基础）
+- 归档路径适配：编辑器默认保存路径/帮助文件定位改为 go3d-toolchain 内路径（帮助文件
+  优先从可执行文件位置推导，项目移动后仍可用）
