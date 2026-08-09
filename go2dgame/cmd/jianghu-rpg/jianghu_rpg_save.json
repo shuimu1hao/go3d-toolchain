@@ -1,0 +1,54 @@
+{
+  "Player": {
+    "Name": "桃夭",
+    "Level": 4,
+    "XP": 32,
+    "HP": 73,
+    "MaxHP": 134,
+    "MP": 20,
+    "MaxMP": 38,
+    "Atk": 17,
+    "Def": 8,
+    "MAtk": 19,
+    "MDef": 9,
+    "Gold": 135,
+    "Items": [
+      "jinchuang",
+      "jinchuang",
+      "neili",
+      "lingpai_血月护法"
+    ],
+    "Skills": [
+      "江湖把式",
+      "基础剑法"
+    ],
+    "MapID": "tianshan",
+    "PX": 7,
+    "PY": 6,
+    "MainProgress": 0,
+    "GirlEvents": {
+      "luoyao": 1,
+      "qing": 3,
+      "suxue": 0,
+      "xiaoman": 0,
+      "yueli": 0
+    },
+    "GirlLove": {
+      "luoyao": 27,
+      "qing": 100,
+      "suxue": 4,
+      "xiaoman": 10,
+      "yueli": 0
+    },
+    "JoinedGirls": {
+      "qing": true
+    }
+  },
+  "Chests": {
+    "heifeng_2_2": true,
+    "luoyang_17_8": true,
+    "tianshan_15_8": true,
+    "wild_15_10": true,
+    "wild_4_4": true
+  }
+}

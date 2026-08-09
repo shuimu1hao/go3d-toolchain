@@ -21,10 +21,10 @@ model.glb
 usage.json
 task_queue.jsonl
 *.zip
-# 编译产物（根目录）
-lipics
-jianghu-rpg
-jianghu
-xiuxian
+# 编译产物（根目录，加 / 前缀避免误匹配同名源码目录）
+/lipics
+/jianghu-rpg
+/jianghu
+/xiuxian
 # 系统字体（从手机拷，体积大不入库）
 *.ttc
