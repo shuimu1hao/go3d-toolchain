@@ -1,14 +1,17 @@
 // data.go - 仙门物语 剧情数据（由 data.js 自动生成，勿手改）
 package main
 
+// AffMap 角色好感度映射。
 type AffMap map[string]int
 
+// Choice 剧情选项（文本 + 好感度影响）。
 type Choice struct {
 	Text    string
 	Aff     AffMap
 	AffHint string
 }
 
+// ScriptNode 剧本节点（对话/选项/章节/结局）。
 type ScriptNode struct {
 	Chapter    string
 	Sp         string

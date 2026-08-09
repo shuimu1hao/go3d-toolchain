@@ -33,6 +33,7 @@ var (
 	cBox    = mesh.Col(190, 70, 60)
 )
 
+// Game 3D 收集游戏主状态。
 type Game struct {
 	eng     *engine.Engine
 	player  math3d.Vec3

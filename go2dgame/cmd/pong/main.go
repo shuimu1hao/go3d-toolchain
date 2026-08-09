@@ -23,11 +23,13 @@ const (
 	maxSpeed = 900.0
 )
 
+// Ball 弹球状态（位置/速度）。
 type Ball struct {
 	X, Y   float64
 	VX, VY float64
 }
 
+// Game 乒乓游戏主状态。
 type Game struct {
 	eng      *engine.Engine
 	leftY    float64 // 左拍中心 Y

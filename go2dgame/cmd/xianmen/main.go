@@ -27,6 +27,7 @@ const (
 	optGap    = 12
 )
 
+// Game 仙门物语游戏主状态。
 type Game struct {
 	eng *engine.Engine
 	mode string // title / story / ending
