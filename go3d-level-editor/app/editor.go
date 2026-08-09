@@ -381,7 +381,7 @@ func (e *Editor) importModelDialog() {
 		e.SetMessage("无法获取主目录")
 		return
 	}
-	path := home + "/hermes11/go3d-editor/scene.json"
+	path := home + "/hermes11/go3d-toolchain/go3d-editor/scene.json"
 	if err := e.ImportModelDoc(path); err != nil {
 		e.SetMessage("载入失败: %v", err)
 	}

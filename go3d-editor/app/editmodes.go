@@ -439,7 +439,7 @@ func defaultModelPath(name string) string {
 	if err != nil {
 		return name
 	}
-	return fmt.Sprintf("%s/hermes11/go3d-editor/%s", home, name)
+	return fmt.Sprintf("%s/hermes11/go3d-toolchain/go3d-editor/%s", home, name)
 }
 
 // exportOBJ 导出选中对象为 OBJ。
@@ -464,5 +464,5 @@ func defaultOBJPath() string {
 	if err != nil {
 		return "model.obj"
 	}
-	return fmt.Sprintf("%s/hermes11/go3d-editor/model.obj", home)
+	return fmt.Sprintf("%s/hermes11/go3d-toolchain/go3d-editor/model.obj", home)
 }

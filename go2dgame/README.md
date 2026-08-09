@@ -11,7 +11,7 @@
 
 ## 为什么有它
 
-`gocligames`（~/hermes11/gocligames）是终端 ASCII 引擎，在 Termux 命令行里跑。
+`gocligames`（GitHub: shuimu1hao/gocligames）是终端 ASCII 引擎，在 Termux 命令行里跑。
 装上 termux-x11 + XFCE 桌面后，就有了真正的图形桌面环境 —— 于是写了这个
 **桌面图形版** 引擎：窗口、像素、精灵、字体，一套 API 画真·游戏画面。
 
@@ -125,7 +125,7 @@ KeyShiftL/R、KeyCtrlL/R，字符键用 KeyChar('w')。
 
 ## 与 gocligames 的关系
 
-`gocligames`（~/hermes11/gocligames）是终端 ASCII 引擎（跨平台四系统，
+`gocligames`（GitHub: shuimu1hao/gocligames）是终端 ASCII 引擎（跨平台四系统，
 Termux 命令行里跑）。go2dgame 是**图形桌面版**，需要 termux-x11 + XFCE。
 两者独立共存：命令行里玩用 gocligames，桌面上玩用 go2dgame。
 

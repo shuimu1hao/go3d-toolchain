@@ -129,7 +129,7 @@ func New(w, h int) *Editor {
 		snap:     true,
 		snapStep: 0.5,
 		snapMask: SnapGrid | SnapVertex,
-		lastSaveRel: "hermes11/go3d-editor/scene.json",
+		lastSaveRel: "hermes11/go3d-toolchain/go3d-editor/scene.json",
 	}
 	e.theme = themeIndex(loadThemeName())
 	if e.theme == 1 {
