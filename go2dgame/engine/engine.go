@@ -58,6 +58,8 @@ type Engine struct {
 	closing bool
 	// WM_DELETE_WINDOW atom
 	wmDelete xproto.Atom
+	// WM_PROTOCOLS atom（WM_DELETE 消息的 message_type）
+	wmProtocols xproto.Atom
 	// keycode → keysym 映射表（GetKeyboardMapping）
 	keymap map[xproto.Keycode]xproto.Keysym
 }
@@ -192,6 +194,7 @@ func (e *Engine) OpenWindow() error {
 	delReply, _ := xproto.InternAtom(e.Conn, false, uint16(len("WM_DELETE_WINDOW")), "WM_DELETE_WINDOW").Reply()
 	e.wmDelete = delReply.Atom
 	protoReply, _ := xproto.InternAtom(e.Conn, false, uint16(len("WM_PROTOCOLS")), "WM_PROTOCOLS").Reply()
+	e.wmProtocols = protoReply.Atom
 	delData := make([]byte, 4)
 	xgb.Put32(delData, uint32(e.wmDelete))
 	xproto.ChangeProperty(e.Conn, xproto.PropModeReplace, wid,
@@ -318,7 +321,9 @@ func (e *Engine) handleEvent(ev xgb.Event) {
 	case xproto.MotionNotifyEvent:
 		e.input.mouseMove(int(ev.EventX), int(ev.EventY))
 	case xproto.ClientMessageEvent:
-		if ev.Type == e.wmDelete {
+		// WM_DELETE_WINDOW 协议：message_type=WM_PROTOCOLS，data[0]=WM_DELETE_WINDOW atom。
+		// （旧代码只比对 ev.Type==wmDelete 永远不成立，导致点 X 关窗口后进程残留）
+		if ev.Type == e.wmProtocols && len(ev.Data.Data32) > 0 && ev.Data.Data32[0] == uint32(e.wmDelete) {
 			e.closing = true
 		}
 	case xproto.ConfigureNotifyEvent:
