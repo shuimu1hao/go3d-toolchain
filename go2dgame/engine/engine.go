@@ -121,16 +121,31 @@ func dialX() (*xgb.Conn, error) {
 }
 
 // OpenWindow 创建并映射横屏窗口。窗口位置默认水平居中、垂直偏上。
+// 窗口尺寸 clamp 到屏幕（手机屏幕常小于请求尺寸，避免右侧按钮被裁剪）。
 func (e *Engine) OpenWindow() error {
 	setup := xproto.Setup(e.Conn)
 	screen := setup.DefaultScreen(e.Conn)
 	w := e.cfg.Width
 	h := e.cfg.Height
 
-	// 窗口尺寸：默认 = 画布尺寸
+	// 窗口尺寸：默认 = 画布尺寸（clamp 到屏幕）
 	winW, winH := w, h
 	if e.cfg.FullWin {
 		winW, winH = w, h
+	}
+	if winW > int(screen.WidthInPixels) {
+		winW = int(screen.WidthInPixels)
+	}
+	if winH > int(screen.HeightInPixels) {
+		winH = int(screen.HeightInPixels)
+	}
+	// clamp 后同步画布逻辑尺寸（UI 布局按实际窗口宽算，避免右缘被裁剪）
+	if winW != e.canvas.W || winH != e.canvas.H {
+		e.canvas.W, e.canvas.H = winW, winH
+		e.canvas.WindowW, e.canvas.WindowH = winW, winH
+		if len(e.canvas.Pixels) != winW*winH*4 {
+			e.canvas.Pixels = make([]byte, winW*winH*4)
+		}
 	}
 
 	// 自动居中：水平居中，垂直略偏上（给 XFCE 面板留出空间）
@@ -195,6 +210,19 @@ func (e *Engine) OpenWindow() error {
 	e.GC = gc
 	e.Conn.Sync()
 	return nil
+}
+
+// ScreenSize 查询默认 X 屏幕尺寸（像素）。连接失败返回 ok=false。
+// 用于游戏启动时把窗口尺寸 clamp 到实际屏幕，避免右侧 UI 被裁剪。
+func ScreenSize() (int, int, bool) {
+	conn, err := dialX()
+	if err != nil {
+		return 0, 0, false
+	}
+	defer conn.Close()
+	setup := xproto.Setup(conn)
+	s := setup.DefaultScreen(conn)
+	return int(s.WidthInPixels), int(s.HeightInPixels), true
 }
 
 // Run 启动主循环：事件 → Update → Draw → 分块上屏，直到窗口关闭/用户退出。

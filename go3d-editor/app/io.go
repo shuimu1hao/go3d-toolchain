@@ -227,18 +227,87 @@ func (e *Editor) Load(path string) error {
 	return nil
 }
 
-// saveDoc 打开保存对话框（询问保存位置和文件名）。
-func (e *Editor) saveDoc() {
-	if e.lastSaveRel == "" {
-		e.lastSaveRel = "hermes11/go3d-toolchain/go3d-editor/scene.json"
+// saveFmtName 格式名称。
+func saveFmtName(f int) string {
+	switch f {
+	case 0:
+		return "JSON 场景"
+	case 2:
+		return "GLB"
+	default:
+		return "OBJ"
 	}
-	e.saveBuf = e.lastSaveRel
-	e.saveBufEdited = false
-	e.saveDialogOpen = true
-	e.SetMessage("保存文档: 输入文件路径（相对 home）后回车，或点保存按钮")
 }
 
-// doSave 执行保存：saveBuf 为相对 home 或绝对路径。
+// saveFmtExt 格式默认后缀。
+func saveFmtExt(f int) string {
+	switch f {
+	case 0:
+		return ".json"
+	case 2:
+		return ".glb"
+	default:
+		return ".obj"
+	}
+}
+
+// setSaveFmt 切换保存格式：同步替换 saveBuf 后缀（无后缀则补）。
+func (e *Editor) setSaveFmt(f int) {
+	e.saveFmt = f
+	p := strings.TrimSpace(e.saveBuf)
+	lower := strings.ToLower(p)
+	for _, old := range []string{".json", ".obj", ".glb", ".stl"} {
+		if strings.HasSuffix(lower, old) {
+			p = p[:len(p)-len(old)]
+			break
+		}
+	}
+	if p == "" {
+		p = "model"
+	}
+	e.saveBuf = p + saveFmtExt(f)
+	e.saveBufEdited = true
+	e.SetMessage("保存格式: %s", saveFmtName(f))
+}
+
+// saveDoc 打开保存对话框（询问保存位置和文件名）。
+// 默认导出 OBJ（实际可用模型）；点格式按钮可切换 JSON 场景/GLB。
+func (e *Editor) saveDoc() {
+	if e.lastSaveRel == "" {
+		e.lastSaveRel = "hermes11/go3d-toolchain/go3d-editor/model.obj"
+	}
+	e.saveFmt = 1 // 默认 OBJ
+	e.saveBuf = e.lastSaveRel
+	e.setSaveFmt(e.saveFmt)
+	e.saveBufEdited = false
+	e.saveDialogOpen = true
+	e.SetMessage("保存: 选格式 → 确认文件名 → 保存（默认导出 model.obj）")
+}
+
+// exportMesh 返回导出网格：有选中可见对象则导出它，否则合并全部可见对象。
+func (e *Editor) exportMesh() (*mesh.Mesh, bool) {
+	var objs []*Object
+	if sel := e.selObj(); sel != nil && sel.Visible {
+		objs = []*Object{sel}
+	} else {
+		objs = e.doc.VisibleObjs()
+	}
+	if len(objs) == 0 {
+		return nil, false
+	}
+	m := &mesh.Mesh{}
+	for _, o := range objs {
+		om := o.RenderMesh()
+		base := len(m.Positions)
+		m.Positions = append(m.Positions, om.Positions...)
+		for _, f := range om.Faces {
+			m.Faces = append(m.Faces, mesh.Face{A: f.A + base, B: f.B + base, C: f.C + base, Col: f.Col})
+		}
+	}
+	return m, true
+}
+
+// doSave 执行保存：saveBuf 为相对 home 或绝对路径；按 saveFmt 分发格式。
 func (e *Editor) doSave() {
 	p := strings.TrimSpace(e.saveBuf)
 	if p == "" {
@@ -246,19 +315,50 @@ func (e *Editor) doSave() {
 		e.SetMessage("保存取消：文件名为空")
 		return
 	}
+	// 自动补后缀（用户没写时按当前格式）
+	ext := saveFmtExt(e.saveFmt)
+	if !strings.HasSuffix(strings.ToLower(p), ext) {
+		p += ext
+	}
 	path := p
 	if !strings.HasPrefix(p, "/") {
 		if home, err := os.UserHomeDir(); err == nil && home != "" {
 			path = filepath.Join(home, p)
 		}
 	}
-	if err := e.Save(path); err != nil {
+	var err error
+	switch e.saveFmt {
+	case 0: // JSON 场景（配合"载入"恢复编辑状态）
+		err = e.Save(path)
+	case 1: // OBJ 导出
+		m, ok := e.exportMesh()
+		if !ok {
+			e.SetMessage("无可见对象可导出")
+			return
+		}
+		err = SaveOBJ(path, m)
+	case 2: // GLB 导出
+		m, ok := e.exportMesh()
+		if !ok {
+			e.SetMessage("无可见对象可导出")
+			return
+		}
+		err = SaveGLB(path, m)
+	default:
+		e.SetMessage("未知保存格式")
+		return
+	}
+	if err != nil {
 		e.SetMessage("保存失败: %v", err)
 		return
 	}
 	e.lastSaveRel = p
 	e.saveDialogOpen = false
-	e.SetMessage("已保存: %s（%d 特征）", path, len(e.doc.Objs))
+	if e.saveFmt == 0 {
+		e.SetMessage("已保存场景: %s（%d 特征）", path, len(e.doc.Objs))
+	} else {
+		e.SetMessage("已导出 %s: %s", saveFmtName(e.saveFmt), path)
+	}
 }
 
 // loadDoc 从默认路径载入。

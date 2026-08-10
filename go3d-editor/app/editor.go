@@ -14,10 +14,10 @@ import (
 
 // 布局常量（SolidWorks 风格：顶工具栏/左模型树/右属性/底状态栏/中视口）。
 const (
-	ToolbarH = 88 // 三行工具栏（SolidWorks 风格：基本体 / 模式 / 全局操作）
-	TreeW    = 240
-	PropW    = 280
-	StatusH  = 32
+	ToolbarH = 144 // 四行工具栏（基本体 / 模式+变换 / 视图 / 模式专属+全局操作）
+	TreeW    = 264
+	PropW    = 304
+	StatusH  = 38
 )
 
 // TransformMode 变换模式。
@@ -95,6 +95,7 @@ type Editor struct {
 	saveDialogOpen bool
 	saveBuf        string
 	saveBufEdited  bool
+	saveFmt        int // 0=JSON 场景 1=OBJ 2=GLB（默认 OBJ，保存为实际可用模型）
 	lastSaveRel    string
 
 	// 吸附（CAD OSNAP 风格：F 开关 + 类型多选）
@@ -129,7 +130,7 @@ func New(w, h int) *Editor {
 		snap:     true,
 		snapStep: 0.5,
 		snapMask: SnapGrid | SnapVertex,
-		lastSaveRel: "hermes11/go3d-toolchain/go3d-editor/scene.json",
+		lastSaveRel: "hermes11/go3d-toolchain/go3d-editor/model.obj",
 	}
 	e.theme = themeIndex(loadThemeName())
 	if e.theme == 1 {
@@ -319,14 +320,7 @@ func (e *Editor) handleKeyboard(in *engine.Input) {
 	if in.Pressed(engine.KeyChar('\x01')) { // Ctrl+A 不处理
 		return
 	}
-	// Alt+字母：keysym 不变，靠 Alt 修饰键区分
-	if in.Down(engine.KeyAltL) || in.Down(engine.KeyAltR) {
-		if in.Pressed(engine.KeyChar('f')) { // Alt+F 吸附类型面板
-			e.saveDialogOpen = false
-			e.pluginPanelOpen = false
-			e.snapPanelOpen = !e.snapPanelOpen
-			return
-		}
+	// ---------- 普通快捷键（无需修饰键） ----------
 	if in.Pressed(engine.KeyEscape) {
 		e.sel = -1
 		e.drag = DragNone
@@ -393,6 +387,14 @@ func (e *Editor) handleKeyboard(in *engine.Input) {
 		e.frameSelected()
 		return
 	}
+	// Alt+字母：keysym 不变，靠 Alt 修饰键区分（优先于普通键，防误触）
+	if in.Down(engine.KeyAltL) || in.Down(engine.KeyAltR) {
+		if in.Pressed(engine.KeyChar('f')) { // Alt+F 吸附类型面板
+			e.saveDialogOpen = false
+			e.pluginPanelOpen = false
+			e.snapPanelOpen = !e.snapPanelOpen
+			return
+		}
 		if in.Pressed(engine.KeyChar('t')) { // Alt+T 主题切换
 			e.toggleTheme()
 			return
@@ -425,6 +427,7 @@ func (e *Editor) handleKeyboard(in *engine.Input) {
 			e.sketchSetPlane(PlaneYZ)
 			return
 		}
+		return
 	}
 	if in.Pressed(engine.KeyHelp) {
 		e.showHelp()

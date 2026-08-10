@@ -31,7 +31,7 @@ func main() {
 	)
 	flag.Parse()
 
-	w, h := 1100, 680
+	w, h := 1280, 780
 	if *res != "" {
 		var rw, rh int
 		if _, err := fmt.Sscanf(*res, "%dx%d", &rw, &rh); err == nil && rw > 0 && rh > 0 {
@@ -40,6 +40,17 @@ func main() {
 			fmt.Fprintln(os.Stderr, "bad res:", *res)
 			os.Exit(2)
 		}
+	}
+	// 窗口尺寸 clamp 到实际屏幕（Termux:X11 手机屏幕常小于请求值，
+	// 否则右端按钮被 X 裁剪导致点不到）
+	if sw, sh, ok := engine.ScreenSize(); ok && sw > 0 && sh > 0 {
+		if w > sw {
+			w = sw
+		}
+		if h > sh {
+			h = sh
+		}
+		fmt.Printf("[main] 屏幕 %dx%d，窗口 %dx%d\n", sw, sh, w, h)
 	}
 
 	// 中文字体（系统 NotoSansCJK）
@@ -50,7 +61,7 @@ func main() {
 	}
 	loaded := false
 	for _, p := range fontPaths {
-		if err := ui.LoadCJK(p, 15); err == nil {
+		if err := ui.LoadCJK(p, 18); err == nil {
 			loaded = true
 			break
 		}

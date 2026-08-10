@@ -16,22 +16,24 @@ const keyF5 = engine.Key(0xff14)
 
 // 布局常量（SolidWorks 风格）。
 const (
-	ToolbarH = 64
-	TreeW    = 240
-	PropW    = 280
-	StatusH  = 32
+	ToolbarH = 74 // 两行工具栏（28px 按钮，与建模编辑器同风格）
+	TreeW    = 264
+	PropW    = 304
+	StatusH  = 38
 )
 
-// UI 颜色。
+// UI 颜色（与建模编辑器 ThemeDark 同款，统一风格）。
 var (
 	uiColorBg     = engine.Color{R: 18, G: 22, B: 30}
-	uiColorPanel  = engine.Color{R: 28, G: 31, B: 37}
-	uiColorPanel2 = engine.Color{R: 24, G: 27, B: 33}
-	uiColorText   = engine.Color{R: 220, G: 224, B: 230}
-	uiColorDim    = engine.Color{R: 130, G: 138, B: 150}
-	uiColorBorder = engine.Color{R: 60, G: 66, B: 78}
+	uiColorPanel  = engine.Color{R: 46, G: 50, B: 58}
+	uiColorPanel2 = engine.Color{R: 52, G: 57, B: 66}
+	uiColorText   = engine.Color{R: 255, G: 255, B: 255}
+	uiColorDim    = engine.Color{R: 185, G: 192, B: 200}
+	uiColorBorder = engine.Color{R: 28, G: 31, B: 37}
 	uiColorAccent = engine.Color{R: 90, G: 150, B: 220}
-	uiColorSel    = engine.Color{R: 44, G: 62, B: 92}
+	uiColorSel    = engine.Color{R: 70, G: 110, B: 170}
+	uiColorBtn    = engine.Color{R: 66, G: 72, B: 84}
+	uiColorBtnHover = engine.Color{R: 84, G: 92, B: 108}
 )
 
 // Editor 关卡编辑器主状态。

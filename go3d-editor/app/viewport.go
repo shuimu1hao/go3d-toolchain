@@ -6,6 +6,7 @@ import (
 	"go2dgame/engine"
 	"go3d/math3d"
 	"go3d/render"
+	"go3deditor/ui"
 )
 
 // ViewportCam 是轨道相机（围绕 Target 旋转/缩放，Blender/SolidWorks 风格）。
@@ -412,41 +413,52 @@ func (e *Editor) drawGridOverlay(c *engine.Canvas) {
 	}
 }
 
-// drawAxisIndicator 视口左下角画小坐标轴指示（X 红 Y 绿 Z 蓝）。
+// drawAxisIndicator 视口左下角画坐标轴指示器（X 红 Y 绿 Z 蓝，带字母标签）。
+// 方向由相机视图矩阵把世界轴变换到相机空间得到（不依赖世界原点投影，
+// 即使原点在相机后方/屏幕外也始终正确）；锚点固定在视口左下角。
 func (e *Editor) drawAxisIndicator(c *engine.Canvas) {
-	// 世界原点投影；若不可见则用视口中心附近固定点
-	origin := math3d.Vec3{0, 0, 0}
-	sx, sy, ok := e.project(origin)
-	if !ok {
-		sx, sy = float32(e.vpW-70), float32(e.vpH-60)
+	const axisLen = 46 // 轴长（px）
+	// 锚点：视口左下角（避开状态栏）
+	ax, ay := e.vpX+60, e.vpY+e.vpH-52
+	cam := e.cam.Camera()
+	var view math3d.Mat4
+	if cam.LookTarget != nil {
+		view = math3d.LookAt(cam.Pos, *cam.LookTarget, math3d.Vec3{0, 1, 0})
 	} else {
-		// 移到视口左下角附近
-		sx, sy = float32(e.vpW-70), float32(e.vpH-60)
+		view = math3d.FPSView(cam.Pos, cam.Yaw, cam.Pitch)
 	}
-	px, py := e.vpX+int(sx), e.vpY+int(sy)
 	axes := []struct {
-		dir math3d.Vec3
-		col engine.Color
+		dir   math3d.Vec3
+		col   engine.Color
+		label string
 	}{
-		{math3d.Vec3{1, 0, 0}, engine.Color{R: 220, G: 70, B: 70}},
-		{math3d.Vec3{0, 1, 0}, engine.Color{R: 80, G: 200, B: 90}},
-		{math3d.Vec3{0, 0, 1}, engine.Color{R: 80, G: 130, B: 240}},
+		{math3d.Vec3{1, 0, 0}, engine.Color{R: 230, G: 80, B: 80}, "X"},
+		{math3d.Vec3{0, 1, 0}, engine.Color{R: 80, G: 210, B: 95}, "Y"},
+		{math3d.Vec3{0, 0, 1}, engine.Color{R: 90, G: 140, B: 250}, "Z"},
 	}
+	// 背景小方块（便于识别）
+	c.FillRect(ax-42, ay-34, 100, 62, engine.Color{R: 26, G: 30, B: 38})
+	c.Rect(ax-42, ay-34, 100, 62, uiColorBorder)
 	for _, a := range axes {
-		// 用相机旋转后的世界轴方向在屏幕上的投影
-		// 简化：取世界原点与原点+轴方向的两个投影点，方向即屏幕方向
-		ex, ey, ok2 := e.project(origin.Add(a.dir))
-		if !ok2 {
+		// 世界轴方向 → 相机空间（Mat3 去掉平移），屏幕 y 向下取反
+		cd := view.Mat3().Transform(a.dir)
+		dx, dy := float64(cd.X), float64(-cd.Y)
+		l := math.Sqrt(dx*dx + dy*dy)
+		if l < 1e-9 {
+			// 轴与视线平行（顶视时 Y 轴）：画空心点表示朝向屏幕
+			c.Circle(ax, ay, 4, a.col)
+			ui.DrawText(c, ax+8, ay-8, a.label, a.col)
 			continue
 		}
-		dx := ex - float32(e.vpW-70)
-		dy := ey - float32(e.vpH-60)
-		len := float32(math.Sqrt(float64(dx*dx + dy*dy)))
-		if len < 1e-6 {
-			continue
-		}
-		ex2, ey2 := float32(e.vpW-70)+dx/len*36, float32(e.vpH-60)+dy/len*36
-		c.Line(px, py, e.vpX+int(ex2), e.vpY+int(ey2), a.col)
-		c.FillRect(e.vpX+int(ex2)-2, e.vpY+int(ey2)-2, 5, 5, a.col)
+		ux, uy := dx/l, dy/l
+		ex := ax + int(ux*axisLen)
+		ey := ay + int(uy*axisLen)
+		// 先画暗影线再画亮线，突出主方向
+		c.Line(ax+1, ay+1, ex+1, ey+1, engine.Color{R: 20, G: 22, B: 28})
+		c.Line(ax, ay, ex, ey, a.col)
+		// 末端小方块 + 字母标签
+		c.FillRect(ex-4, ey-4, 8, 8, a.col)
+		ui.DrawText(c, ex+6, ey-6, a.label, a.col)
 	}
+	ui.DrawText(c, ax-34, ay+18, "世界", uiColorDim)
 }

@@ -2,13 +2,13 @@
 # ============================================================
 #  仙门物语 · 桌面版启动脚本（termux-x11 + XFCE 图形环境）
 #  用法:
-#    bash ~/hermes11/go2dgame/cmd/xianmen/start.sh          启动游戏
-#    bash ~/hermes11/go2dgame/cmd/xianmen/start.sh stop     停止游戏
-#    bash ~/hermes11/go2dgame/cmd/xianmen/start.sh build    重新编译
-#    bash ~/hermes11/go2dgame/cmd/xianmen/start.sh bot [0|1|2] 自动测试某条线
+#    bash ~/hermes11/go3d-toolchain/go2dgame/cmd/xianmen/start.sh          启动游戏
+#    bash ~/hermes11/go3d-toolchain/go2dgame/cmd/xianmen/start.sh stop     停止游戏
+#    bash ~/hermes11/go3d-toolchain/go2dgame/cmd/xianmen/start.sh build    重新编译
+#    bash ~/hermes11/go3d-toolchain/go2dgame/cmd/xianmen/start.sh bot [0|1|2] 自动测试某条线
 # ============================================================
-PROJ=~/hermes11/go2dgame/cmd/xianmen
-BIN=~/hermes11/go2dgame/bin/xianmen
+PROJ=~/hermes11/go3d-toolchain/go2dgame/cmd/xianmen
+BIN=~/hermes11/go3d-toolchain/go2dgame/bin/xianmen
 
 cd "$PROJ" || { echo "❌ 项目目录不存在"; exit 1; }
 
@@ -35,7 +35,7 @@ case "$1" in
     exit 0
     ;;
   build)
-    cd ~/hermes11/go2dgame && go build -o bin/xianmen ./cmd/xianmen && echo "✅ 编译完成: $BIN"
+    cd ~/hermes11/go3d-toolchain/go2dgame && go build -o bin/xianmen ./cmd/xianmen && echo "✅ 编译完成: $BIN"
     exit 0
     ;;
   bot)
