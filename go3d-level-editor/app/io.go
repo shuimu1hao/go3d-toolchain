@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"go3d/math3d"
+	"go3d/mesh"
 	"go3deditor/app"
 )
 
@@ -90,6 +91,18 @@ func (e *Editor) Load(path string) error {
 	e.spritePaths = map[string]string{}
 	// 模型资源
 	for _, mj := range lj.Models {
+		if mj.Idx < 0 {
+			// OBJ 来源（建模编辑器导出的 model.obj）：按网格加载
+			m, err := app.LoadOBJ(mj.Path)
+			if err != nil {
+				continue
+			}
+			res := &ModelRes{Name: mj.Name, Mesh: m, Color: mesh.Col(170, 170, 180)}
+			lv.AddModel(res)
+			e.resPaths[res.Name] = mj.Path
+			e.resIdxs[res.Name] = -1
+			continue
+		}
 		doc, err := app.LoadDocumentFile(mj.Path)
 		if err != nil || mj.Idx < 0 || mj.Idx >= len(doc.Objs) {
 			continue

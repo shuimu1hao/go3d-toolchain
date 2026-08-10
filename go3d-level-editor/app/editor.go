@@ -3,10 +3,13 @@ package app
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"go2dgame/engine"
 	"go3d/math3d"
+	"go3d/mesh"
 	"go3d/render"
 	g3e "go3deditor/app"
 )
@@ -75,6 +78,16 @@ type Editor struct {
 	fpsCnt int
 	fpsT   time.Time
 	msg    string
+
+	// 文件选择对话框（内置浏览器：OBJ/建模JSON/素材图均可选文件导入）
+	fileDlgOpen  bool
+	fileDlgDir   string
+	fileDlgTitle string
+	fileDlgMode  int      // 0=OBJ 1=建模JSON 2=素材图
+	fileDlgExts  []string // 小写扩展名过滤（空=全部）
+	fileDlgList  []dirEntry
+	fileDlgSel   int // 选中行索引（-1 无）
+	fileDlgScroll int
 	msgT   time.Time
 
 	// 帮助
@@ -154,6 +167,9 @@ func (e *Editor) Draw(c *engine.Canvas) {
 	if e.showHelp {
 		e.drawHelp(c)
 	}
+	if e.fileDlgOpen {
+		e.drawFileDialog(c)
+	}
 }
 
 // ---------- 命令 ----------
@@ -175,6 +191,36 @@ func (e *Editor) ImportModelDoc(path string) error {
 		e.resIdxs[res.Name] = idx
 	}
 	e.SetMessage("导入 %d 个模型资源: %s", len(doc.Objs), path)
+	return nil
+}
+
+// ImportOBJModel 导入 OBJ 模型文件为模型资源（纯网格，无骨骼/动画）。
+// 与建模编辑器"保存→OBJ"导出配套：导出的 model.obj 可直接在这里载入。
+func (e *Editor) ImportOBJModel(path string) error {
+	m, err := g3e.LoadOBJ(path)
+	if err != nil {
+		return err
+	}
+	base := filepath.Base(path)
+	name := strings.TrimSuffix(base, filepath.Ext(base))
+	if name == "" {
+		name = "OBJ模型"
+	}
+	if e.level.FindModel(name) != nil {
+		name = name + "_2"
+		for e.level.FindModel(name) != nil {
+			name += "_2"
+		}
+	}
+	res := &ModelRes{
+		Name:  name,
+		Mesh:  m,
+		Color: mesh.Col(170, 170, 180),
+	}
+	e.level.AddModel(res)
+	e.resPaths[name] = path
+	e.resIdxs[name] = -1 // -1 表示 OBJ 来源（Load 关卡时按网格加载）
+	e.SetMessage("导入 OBJ 模型: %s（%d 顶点 %d 面）", base, len(m.Positions), len(m.Faces))
 	return nil
 }
 
@@ -278,6 +324,23 @@ func defaultScenePath() string {
 
 // updateEdit 编辑模式输入。
 func (e *Editor) updateEdit(in *engine.Input) {
+	// 文件选择对话框模态：只响应滚轮滚动和对话框内点击
+	if e.fileDlgOpen {
+		if in.Wheel != 0 {
+			e.fileDlgScroll -= in.Wheel
+			if e.fileDlgScroll < 0 {
+				e.fileDlgScroll = 0
+			}
+			if e.fileDlgScroll > e.fileDlgMaxScroll() {
+				e.fileDlgScroll = e.fileDlgMaxScroll()
+			}
+		}
+		if in.MouseLeftPressed {
+			e.fileDialogClick(in.MouseX, in.MouseY)
+		}
+		e.prevMX, e.prevMY = in.MouseX, in.MouseY
+		return
+	}
 	// 快捷键
 	if in.Pressed(engine.KeyHelp) {
 		e.showHelp = !e.showHelp
@@ -376,41 +439,46 @@ func (e *Editor) updateEdit(in *engine.Input) {
 	}
 }
 
-// importModelDialog 载入建模编辑器 JSON（默认路径）。
+// importModelDialog 载入建模编辑器 JSON（打开文件选择对话框）。
 func (e *Editor) importModelDialog() {
 	home, err := osUserHomeDir()
 	if err != nil {
 		e.SetMessage("无法获取主目录")
 		return
 	}
-	path := home + "/hermes11/go3d-toolchain/go3d-editor/scene.json"
-	if err := e.ImportModelDoc(path); err != nil {
-		e.SetMessage("载入失败: %v", err)
+	dir := home + "/hermes11/go3d-toolchain/go3d-editor"
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		dir = home
 	}
+	e.openFileDlg(1, "导入建模 JSON（选择 .json 文件）", dir, []string{".json"})
 }
 
-// importSpriteDialog 载入贴图素材（默认素材目录）。
+// importOBJModel 载入 OBJ 模型（打开文件选择对话框）。
+func (e *Editor) importOBJModel() {
+	home, err := osUserHomeDir()
+	if err != nil {
+		e.SetMessage("无法获取主目录")
+		return
+	}
+	dir := home + "/hermes11/go3d-toolchain/go3d-editor"
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		dir = home
+	}
+	e.openFileDlg(0, "导入 OBJ 模型（选择 .obj 文件）", dir, []string{".obj"})
+}
+
+// importSpriteDialog 载入贴图素材（打开文件选择对话框）。
 func (e *Editor) importSpriteDialog() {
 	home, err := osUserHomeDir()
 	if err != nil {
 		e.SetMessage("无法获取主目录")
 		return
 	}
-	path := home + "/hermes11/assets/"
-	names, err := osListDir(path)
-	if err != nil || len(names) == 0 {
-		e.SetMessage("素材目录为空: %s", path)
-		return
+	dir := home + "/hermes11/assets"
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		dir = home
 	}
-	loaded := 0
-	for _, n := range names {
-		if len(n) > 4 && (n[len(n)-4:] == ".png" || n[len(n)-4:] == ".jpg" || n[len(n)-4:] == ".jpeg") {
-			if err := e.ImportSprite(path + n); err == nil {
-				loaded++
-			}
-		}
-	}
-	e.SetMessage("载入素材 %d 张", loaded)
+	e.openFileDlg(2, "导入贴图素材（选择图片文件）", dir, []string{".png", ".jpg", ".jpeg"})
 }
 
 // saveDoc 保存关卡。

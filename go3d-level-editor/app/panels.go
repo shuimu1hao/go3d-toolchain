@@ -46,6 +46,8 @@ func (e *Editor) drawToolbar(c *engine.Canvas) {
 	lw := ui.TextW("载入") + 14
 	drawBtn(c, x, y, ui.TextW("载入建模JSON")+14, bh, "载入建模JSON", false, func() { e.importModelDialog() })
 	x += ui.TextW("载入建模JSON") + 20
+	drawBtn(c, x, y, ui.TextW("载入OBJ模型")+14, bh, "载入OBJ模型", false, func() { e.importOBJModel() })
+	x += ui.TextW("载入OBJ模型") + 20
 	drawBtn(c, x, y, ui.TextW("载入素材图")+14, bh, "载入素材图", false, func() { e.importSpriteDialog() })
 	x += ui.TextW("载入素材图") + 20
 	drawBtn(c, c.W-PropW-10-sw*2-6, y, sw, bh, "保存", false, func() { e.saveDoc() })
